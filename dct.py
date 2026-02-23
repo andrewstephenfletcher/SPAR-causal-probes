@@ -165,7 +165,7 @@ class SteeringCalibrator():
             return math.sqrt((num / denom).mean())
 
         # solve for jacobian_ratio = target_ratio
-        soln = root_scalar(lambda r: jacobian_ratio(r)-self.target_ratio, bracket=[.001, 100.0])
+        soln = root_scalar(lambda r: jacobian_ratio(r)-self.target_ratio, bracket=[.001, 1e6])
         self.R = soln.root
         return self.R
 class LinearDCT():
@@ -226,8 +226,12 @@ class LinearDCT():
         self.J = J
 
         # compute SVD to get factorization of Jacobian
+        # torch.linalg.svd doesn't support bfloat16 on CUDA, so upcast temporarily
         print("computing SVD of jacobian...")
-        self.U, _, self.V = torch.linalg.svd(J)
+        J_dtype = J.dtype
+        self.U, _, self.V = torch.linalg.svd(J.float())
+        self.U = self.U.to(J_dtype)
+        self.V = self.V.to(J_dtype)
         self.V = self.V[:,:self.num_factors]
 
         # if method=="projected" then we need an extra forward pass to get output directions in full space
@@ -322,9 +326,10 @@ class QuadraticDCT():
         fdots = []
         objective_values = []
         for i in tqdm(range(max_iters)):
-            # orthogonalize
+            # orthogonalize (qr not supported for bfloat16 on CUDA, upcast temporarily)
             with torch.no_grad():
-                self.V.data, _ = torch.linalg.qr(self.V)
+                V_q, _ = torch.linalg.qr(self.V.float())
+                self.V.data = V_q.to(self.V.dtype)
 
             # loop over data to compute updates
             fdot_avg = StreamingAverage()
@@ -383,7 +388,8 @@ class ExponentialDCT():
             if target_vec is None:
                 self.alphas = (Delta_avg.get_mean() * self.U).sum(dim=0)
                 K = (self.U.t() @ self.U) * torch.expm1(self.V.t() @ self.V)
-                self.alphas = torch.linalg.solve(K, self.alphas)
+                # solve not supported for bfloat16 on CUDA, upcast temporarily
+                self.alphas = torch.linalg.solve(K.float(), self.alphas.float()).to(K.dtype)
                 self.scores = self.alphas.pow(2)
                 self.scores, self.indices = torch.sort(self.scores, descending=True)
             else:
@@ -456,9 +462,10 @@ class ExponentialDCT():
         objective_values = []
         print("training...")
         for i in tqdm(range(self.max_iters)):
-            # orthogonalize
+            # orthogonalize (qr not supported for bfloat16 on CUDA, upcast temporarily)
             with torch.no_grad():
-                self.V.data, _ = torch.linalg.qr(self.V)
+                V_q, _ = torch.linalg.qr(self.V.float())
+                self.V.data = V_q.to(self.V.dtype)
 
             # loop over data to compute updates
             fdot_avg = StreamingAverage()
