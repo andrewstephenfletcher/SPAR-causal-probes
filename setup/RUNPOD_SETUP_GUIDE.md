@@ -1,4 +1,4 @@
-# RunPod Setup Guide — SPAR Causal Probes
+# RunPod Guide — SPAR Causal Probes
 
 A step-by-step guide to get up and running with LLM inference on RunPod for causal probing experiments.
 
