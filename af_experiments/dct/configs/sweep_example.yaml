@@ -1,0 +1,62 @@
+# W&B Sweep config for evaluating DCT probes on LIARS' BENCH
+#
+# Usage:
+#   cd af_experiments/dct
+#   wandb sweep configs/sweep_example.yaml
+#   wandb agent <sweep_id>
+
+program: scripts/evaluate_probe.py
+method: grid
+name: dct-probe-sweep
+
+parameters:
+  probe_collection:
+    value: probes/gemma9b_s9_t19/
+  filter_label:
+    value: deception
+  activations_dir:
+    value: data/activations
+  token_strategy:
+    values:
+      - last_prompt
+      - last_response
+      - mean_response
+      - first_response
+      - last_three
+  probed_layer:
+    values:
+      - source
+      - target
+  control_dataset:
+    value: alpaca
+  target_fpr:
+    value: 0.01
+  wandb_project:
+    value: dct-probe-liars-bench
+  wandb_tags:
+    value:
+      - sweep
+      - dct
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - --probe_collection
+  - ${probe_collection}
+  - --filter_label
+  - ${filter_label}
+  - --activations_dir
+  - ${activations_dir}
+  - --token_strategy
+  - ${token_strategy}
+  - --probed_layer
+  - ${probed_layer}
+  - --control_dataset
+  - ${control_dataset}
+  - --target_fpr
+  - ${target_fpr}
+  - --wandb_project
+  - ${wandb_project}
+  - --wandb_tags
+  - ${wandb_tags}

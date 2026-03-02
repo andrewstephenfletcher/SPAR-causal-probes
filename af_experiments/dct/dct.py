@@ -25,10 +25,10 @@ class SlicedModel(nn.Module):
         self.start_layer = start_layer
         self.end_layer = end_layer
         if layers_name is None:
-            if hasattr(self.model, "layers"):  
+            if hasattr(self.model, "layers"):
+                self.layers_name = "layers"
+            elif hasattr(self.model, "model"):
                 self.layers_name = "model.layers"
-            elif hasattr(self.model, "model"): 
-                self.layers_name =  "model.model.layers"
             else:
                 raise ValueError(f"don't know how to get layer list for {type(model)}")
         else:
@@ -54,7 +54,7 @@ class SlicedModel(nn.Module):
             rgetattr(self.model, self.layers_name)[i].self_attn.layer_idx = i
 
         # actually run the forward pass
-        result = self.model(inputs_embeds=h, output_hidden_states=True).hidden_states[self.end_layer-self.start_layer]
+        result = self.model(inputs_embeds=h, output_hidden_states=True, use_cache=False).hidden_states[self.end_layer-self.start_layer]
 
         # reset model to un-mutated state
         self.reset()
@@ -71,7 +71,7 @@ class DeltaActivations(nn.Module):
         computes average delta in target layer activations as a 
         function of bias theta
         '''
-        delta = self.sliced_model(x+theta) - y # batch_size x seq_len x d_model
+        delta = self.sliced_model(x+theta.to(dtype=x.dtype)) - y # batch_size x seq_len x d_model
         delta = delta[:, self.target_position_indices, :]
         return delta.mean(dim=1)
 
@@ -135,21 +135,35 @@ class SteeringCalibrator():
         delta_acts = vmap(delta_acts_single, in_dims=(1,None,None), out_dims=2,
                   chunk_size=factor_batch_size)
         d_model = X.shape[2]
-        V_cal = F.normalize(torch.randn(d_model, calibration_sample_size), dim=0)
-        def jvp_single(v,X,Y):
-            v0 = torch.zeros_like(v)
-            _, jvp_out = jvp(lambda _v: delta_acts_single(_v,X,Y), (v0,), (v,))
-            return jvp_out
-        jvp_batch = vmap(lambda v, X, Y: jvp_single(v,X,Y), in_dims=(1,None,None), out_dims=(2), chunk_size=factor_batch_size)
+        device = delta_acts_single.device
+        V_cal = F.normalize(torch.randn(d_model, calibration_sample_size, device=device), dim=0)
+
+        use_mps = str(device).startswith("mps")
+
+        if use_mps:
+            # torch.func.jvp does not work reliably on MPS.  We instead use a finite-difference
+            # Jacobian but restrict the search bracket to scales representable in bfloat16.
+            # Per-element perturbation = r / sqrt(d_model); bfloat16 precision near 1.0 is ~0.008.
+            # Need r / sqrt(d_model) > 0.008  =>  r > 0.008 * sqrt(d_model).
+            r_min_mps = 0.01 * math.sqrt(d_model)  # ~0.6 for d_model=3584
+            fd_eps = r_min_mps  # compute U_cal at this reference scale
 
         U_cal_avg = StreamingAverage()
         with torch.no_grad():
             for b in range(0, X.shape[0], batch_size):
-                x = X[b:b+batch_size,:,:].to(delta_acts_single.device)
-                y = Y[b:b+batch_size,:,:].to(delta_acts_single.device)
-                U_cal_batch = jvp_batch(V_cal, x, y)
+                x = X[b:b+batch_size,:,:].to(device)
+                y = Y[b:b+batch_size,:,:].to(device)
+                if use_mps:
+                    U_cal_batch = delta_acts(fd_eps * V_cal, x, y) / fd_eps
+                else:
+                    def jvp_single(v, X, Y):
+                        v0 = torch.zeros_like(v)
+                        _, jvp_out = jvp(lambda _v: delta_acts_single(_v, X, Y), (v0,), (v,))
+                        return jvp_out
+                    jvp_batch = vmap(lambda v, X, Y: jvp_single(v, X, Y), in_dims=(1, None, None), out_dims=2, chunk_size=factor_batch_size)
+                    U_cal_batch = jvp_batch(V_cal, x, y)
                 U_cal_avg.update(U_cal_batch)
-        U_cal = U_cal_avg.get_mean()
+        U_cal = U_cal_avg.get_mean().float()  # upcast for stable ratio computation
         U_cal_norms = U_cal.norm(dim=0)
 
         def jacobian_ratio(r):
@@ -161,11 +175,12 @@ class SteeringCalibrator():
                     y = Y[b:b+batch_size,:,:].to(delta_acts_single.device)
                     delta_acts_batch = delta_acts(r*V_cal, x, y)
                     delta_acts_avg.update(delta_acts_batch)
-            num = (delta_acts_avg.get_mean()-r*U_cal).pow(2).sum(dim=0)
-            return math.sqrt((num / denom).mean())
+            num = (delta_acts_avg.get_mean().float()-r*U_cal).pow(2).sum(dim=0)
+            return math.sqrt(float((num / denom.clamp(min=1e-30)).mean()))
 
-        # solve for jacobian_ratio = target_ratio
-        soln = root_scalar(lambda r: jacobian_ratio(r)-self.target_ratio, bracket=[.001, 100.0])
+        # On MPS restrict the bracket to scales representable in bfloat16
+        bracket = [r_min_mps, 100.0] if use_mps else [0.001, 100.0]
+        soln = root_scalar(lambda r: jacobian_ratio(r)-self.target_ratio, bracket=bracket)
         self.R = soln.root
         return self.R
 class LinearDCT():
@@ -178,6 +193,7 @@ class LinearDCT():
         delta_acts = vmap(delta_acts_single, in_dims=(1,None,None), out_dims=2,
                   chunk_size=factor_batch_size)
         d_model = X.shape[2]
+        device = delta_acts_single.device
 
         if method == "projected":
             # vector-jacobian product (backwards AD) helper functions
@@ -189,24 +205,24 @@ class LinearDCT():
             vjp_batch = vmap(lambda u,v, X, Y: vjp_single(u,v,X,Y), in_dims=(1,1,None,None),
                              out_dims=(1,2,1), chunk_size=factor_batch_size)
         elif method == "full":
-            v0 = torch.zeros(d_model)
+            v0 = torch.zeros(d_model, device=device)
             def jvp_single(v,X,Y):
                 with torch.no_grad():
                     output, jvp_out = jvp(lambda _v: delta_acts_single(_v, X, Y), (v0,),(v,))
                 return jvp_out # d_model
             jvp_batch = vmap(lambda v, X, Y: jvp_single(v,X,Y), in_dims=(1,None,None),
                              out_dims=2,chunk_size=factor_batch_size)
-            
+
         if method=="projected":
             # if projected we will calculate VJPs at random output directions
-            U_rand = F.normalize(torch.randn(d_model, dim_output_projection),dim=0)
+            U_rand = F.normalize(torch.randn(d_model, dim_output_projection, device=device), dim=0)
         else:
             # otherwise use all output directions in standard basis
             dim_output_projection = d_model
-            V_in = torch.eye(d_model)
+            V_in = torch.eye(d_model, device=device)
 
         # will calculate jacobian at zero
-        V0 = torch.zeros(d_model, dim_output_projection)
+        V0 = torch.zeros(d_model, dim_output_projection, device=device)
 
         # loop over data
         print("computing jacobian...")
@@ -294,7 +310,7 @@ class QuadraticDCT():
         # define autograd functions
         # u'Jv
         def ujv_fn(u,v,X,Y):
-            v0 = torch.zeros(self.d_source)
+            v0 = torch.zeros(self.d_source, device=self.device)
             _, jvp_out = jvp(lambda _v: delta_acts_single(_v, X, Y), (v0,), (v,))
             return (jvp_out @ u).mean()
         # H(u,v,:)
@@ -306,7 +322,7 @@ class QuadraticDCT():
             return hfunc(U,V)
         # Jv
         def jv1(v, X, Y):
-            v0 = torch.zeros(self.d_source)
+            v0 = torch.zeros(self.d_source, device=self.device)
             return jvp(lambda v_: delta_acts_single(v_,X,Y), (v0,),(v,))[1]
         # H(:,v,v)
         def hvv(v1,v2,X,Y):
@@ -381,8 +397,8 @@ class ExponentialDCT():
                 Delta_batch = delta_acts(self.input_scale * self.V, x, y)              
                 Delta_avg.update(Delta_batch)
             if target_vec is None:
-                self.alphas = (Delta_avg.get_mean() * self.U).sum(dim=0)
-                K = (self.U.t() @ self.U) * torch.expm1(self.V.t() @ self.V)
+                self.alphas = (Delta_avg.get_mean().float() * self.U.float()).sum(dim=0)
+                K = (self.U.float().t() @ self.U.float()) * torch.expm1(self.V.float().t() @ self.V.float())
                 self.alphas = torch.linalg.solve(K, self.alphas)
                 self.scores = self.alphas.pow(2)
                 self.scores, self.indices = torch.sort(self.scores, descending=True)
@@ -494,10 +510,10 @@ class ModelEditor():
         '''
         self.model = model
         if layers_name is None:
-            if hasattr(self.model, "layers"):  
+            if hasattr(self.model, "layers"):
+                self.layers_name = "layers"
+            elif hasattr(self.model, "model"):
                 self.layers_name = "model.layers"
-            elif hasattr(self.model, "model"):  # mistral-like
-                self.layers_name =  "model.model.layers"
             else:
                 raise ValueError(f"don't know how to get layer list for {type(model)}")
         else:

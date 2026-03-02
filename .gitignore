@@ -208,3 +208,6 @@ __marimo__/
 
 # data
 data/liars_bench
+af_experiments/dct/data
+af_experiments/dct/wandb
+af_experiments/dct/probes
