@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Configuration for GRPO steering-vector experiment.
+# Lower-strength configuration for GRPO steering.
 MODEL_NAME="Qwen/Qwen2.5-0.5B-Instruct"
 REWARD_MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 LAYER_IDX=18
@@ -9,7 +9,13 @@ NUM_GENERATIONS=8
 TRAIN_PROMPT="Is Paris the capital of France?"
 EVAL_PROMPT="Is Moscow the capital of Russia?"
 
-python rl/grpo_steering.py \
+STEERING_STRENGTH=0.2
+STEERING_INIT_SCALE=1e-4
+LEARNING_RATE=5e-3
+BETA=0.1
+GIBBERISH_PENALTY_WEIGHT=0.2
+
+python scripts/run_grpo_steering.py \
   --model-name "$MODEL_NAME" \
   --reward-model-name "$REWARD_MODEL_NAME" \
   --layer-idx "$LAYER_IDX" \
@@ -17,5 +23,8 @@ python rl/grpo_steering.py \
   --num-generations "$NUM_GENERATIONS" \
   --train-prompt "$TRAIN_PROMPT" \
   --eval-prompt "$EVAL_PROMPT" \
-  --per_device_train_batch_size 2 \
-  --gradient_accumulation_steps 4
+  --steering-strength "$STEERING_STRENGTH" \
+  --steering-init-scale "$STEERING_INIT_SCALE" \
+  --learning-rate "$LEARNING_RATE" \
+  --beta "$BETA" \
+  --gibberish-penalty-weight "$GIBBERISH_PENALTY_WEIGHT"

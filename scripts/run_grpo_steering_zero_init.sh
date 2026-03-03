@@ -17,5 +17,4 @@ python rl/grpo_steering.py \
   --num-generations "$NUM_GENERATIONS" \
   --train-prompt "$TRAIN_PROMPT" \
   --eval-prompt "$EVAL_PROMPT" \
-  --per_device_train_batch_size 2 \
-  --gradient_accumulation_steps 4
+  --steering-init-zero
