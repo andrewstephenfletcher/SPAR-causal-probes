@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Configuration for GRPO steering-vector experiment.
 MODEL_NAME="Qwen/Qwen2.5-0.5B-Instruct"
-REWARD_MODEL_NAME="distilbert-base-uncased-finetuned-sst-2-english"
+REWARD_MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 LAYER_IDX=10
 MAX_STEPS=200
 NUM_GENERATIONS=8

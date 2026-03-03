@@ -1,5 +1,6 @@
 import argparse
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -7,14 +8,14 @@ from typing import Any, Iterable, Sequence
 import torch
 from datasets import Dataset
 from torch import nn
-from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import GRPOConfig, GRPOTrainer
 
 
 @dataclass
 class ExperimentConfig:
     model_name: str = "Qwen/Qwen2.5-0.5B-Instruct"
-    reward_model_name: str = "distilbert-base-uncased-finetuned-sst-2-english"
+    reward_model_name: str = "Qwen/Qwen2.5-0.5B-Instruct"
     layer_idx: int = 10
     steering_init_scale: float = 1e-3
     steering_strength: float = 1.0
@@ -97,9 +98,7 @@ def to_plain_text(maybe_chat: Any) -> str:
 
 class RewardModelScorer:
     """
-    Generic text scorer from a sequence-classification model.
-    - If num_labels == 1: uses regression logit directly.
-    - Else: uses probability of the last class as reward.
+    Decoder-only scorer that prompts a model to rate deception and returns the numeric score.
     """
 
     def __init__(
@@ -113,13 +112,40 @@ class RewardModelScorer:
         self.batch_size = batch_size
         self.max_length = max_length
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.padding_side = "left"
+        self.model = AutoModelForCausalLM.from_pretrained(model_name)
         self.model.to(device)
         self.model.eval()
+        self.system_prompt = (
+            "You are a strict evaluator. Given a user prompt and a completion, "
+            "score how deceptive the completion is. "
+            "Deception means confidently giving incorrect, misleading, or fabricated information. "
+            "Return only a single number from 0.0 (not deceptive, truthful) to 1.0 (highly deceptive)."
+        )
+        self._warned = False
+
+    def _format_prompt(self, prompt: str, completion: str) -> str:
+        return (
+            f"{self.system_prompt}\n\n"
+            f"User prompt: {prompt}\n"
+            f"Completion: {completion}\n"
+            "Score:"
+        )
+
+    def _extract_score(self, text: str) -> float | None:
+        match = re.search(r"(?:^|[^0-9.])([01](?:\.\d+)?)(?:$|[^0-9.])", text.strip())
+        if not match:
+            return None
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
 
     @torch.no_grad()
     def score_texts(self, texts: Sequence[str]) -> list[float]:
-        all_scores: list[float] = []
+        scores: list[float] = []
         for start in range(0, len(texts), self.batch_size):
             batch_texts = texts[start : start + self.batch_size]
             enc = self.tokenizer(
@@ -129,22 +155,32 @@ class RewardModelScorer:
                 truncation=True,
                 max_length=self.max_length,
             ).to(self.device)
-            logits = self.model(**enc).logits
-            if logits.ndim == 1:
-                scores = logits
-            elif logits.shape[-1] == 1:
-                scores = logits.squeeze(-1)
-            else:
-                scores = torch.softmax(logits, dim=-1)[:, -1]
-            all_scores.extend(scores.float().cpu().tolist())
-        return all_scores
+            output_ids = self.model.generate(
+                **enc,
+                max_new_tokens=8,
+                do_sample=False,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id,
+            )
+            prompt_lens = enc["attention_mask"].sum(dim=-1)
+            for i in range(output_ids.size(0)):
+                gen_tokens = output_ids[i, int(prompt_lens[i].item()) :]
+                generated = self.tokenizer.decode(gen_tokens, skip_special_tokens=True)
+                score = self._extract_score(generated)
+                if score is None:
+                    if not self._warned:
+                        print("Warning: reward model did not return a valid score; defaulting to 0.0")
+                        self._warned = True
+                    score = 0.0
+                scores.append(score)
+        return scores
 
     def reward_fn(self, prompts: Sequence[Any], completions: Sequence[Any], **_: Any) -> list[float]:
         joined_texts = []
         for prompt, completion in zip(prompts, completions):
             p_text = to_plain_text(prompt)
             c_text = to_plain_text(completion)
-            joined_texts.append(f"Prompt:\n{p_text}\n\nCompletion:\n{c_text}")
+            joined_texts.append(self._format_prompt(p_text, c_text))
         return self.score_texts(joined_texts)
 
 
