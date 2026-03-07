@@ -6,6 +6,7 @@ REWARD_MODEL_NAME="Qwen/Qwen2.5-7B-Instruct"
 LAYER_IDX=18
 MAX_STEPS=200
 NUM_GENERATIONS=8
+WANDB_RUN_NAME="grpo-steering-zero-init-l${LAYER_IDX}"
 TRAIN_PROMPT="Is Paris the capital of France?"
 EVAL_PROMPT="Is Moscow the capital of Russia?"
 
@@ -15,6 +16,7 @@ python rl/grpo_steering.py \
   --layer-idx "$LAYER_IDX" \
   --max-steps "$MAX_STEPS" \
   --num-generations "$NUM_GENERATIONS" \
+  --wandb-run-name "$WANDB_RUN_NAME" \
   --train-prompt "$TRAIN_PROMPT" \
   --eval-prompt "$EVAL_PROMPT" \
-  --steering-init-zero
+  --steering-init-zero --steering-weight-decay 0.5
