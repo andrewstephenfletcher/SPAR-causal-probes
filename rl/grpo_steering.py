@@ -62,10 +62,10 @@ class ExperimentConfig:
     wandb_project: str = "grpo_steering"
     wandb_run_name: str | None = None
     gibberish_penalty_weight: float = 0.0
+    gibberish_gate_threshold: float | None = None
     base_nll_weight: float = 0.0
     log_completions_steps: int = 1
     log_completions_num_prompts: int = 8
-    log_completions_max_new_tokens: int = 64
     steering_init_zero: bool = False
     steering_weight_decay: float = 0.0
     use_chat_template: bool = False
@@ -147,59 +147,6 @@ class SteeringMetricsCallback(TrainerCallback):
         )
 
 
-class CompletionLoggingCallback(TrainerCallback):
-    def __init__(
-        self,
-        model: AutoModelForCausalLM,
-        tokenizer: AutoTokenizer,
-        prompts: Sequence[str],
-        every_n_steps: int,
-        max_new_tokens: int,
-        num_prompts: int,
-    ):
-        self.model = model
-        self.tokenizer = tokenizer
-        self.prompts = list(prompts)
-        self.every_n_steps = every_n_steps
-        self.max_new_tokens = max_new_tokens
-        self.num_prompts = num_prompts
-        try:
-            import wandb  # type: ignore
-
-            self._wandb = wandb
-        except Exception:
-            self._wandb = None
-
-    def on_step_end(self, args, state, control, **kwargs):  # type: ignore[override]
-        if self._wandb is None or self.every_n_steps <= 0:
-            return
-        if state.global_step == 0 or state.global_step % self.every_n_steps != 0:
-            return
-        if not self.prompts:
-            return
-        prompts = self.prompts[: self.num_prompts]
-        device = self.model.device
-        inputs = self.tokenizer(
-            prompts, return_tensors="pt", padding=True, truncation=True
-        ).to(device)
-        with torch.no_grad():
-            output_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=self.max_new_tokens,
-                do_sample=True,
-                pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-            )
-        prompt_lens = inputs["attention_mask"].sum(dim=-1)
-        rows = []
-        for i, prompt in enumerate(prompts):
-            comp_tokens = output_ids[i, int(prompt_lens[i].item()) :]
-            completion = self.tokenizer.decode(comp_tokens, skip_special_tokens=True)
-            rows.append([state.global_step, prompt, completion])
-        table = self._wandb.Table(columns=["step", "prompt", "completion"], data=rows)
-        self._wandb.log({"samples/completions": table})
-
-
 def set_seed(seed: int) -> None:
     random.seed(seed)
     torch.manual_seed(seed)
@@ -263,11 +210,15 @@ class RewardModelScorer:
         )
         self._warned = False
         self.gibberish_penalty_weight = 0.0
+        self.gibberish_gate_threshold: float | None = None
         self.base_nll_weight = 0.0
         self.use_chat_template = use_chat_template
         self.base_model: AutoModelForCausalLM | None = None
         self.base_tokenizer: AutoTokenizer | None = None
         self.base_steering: LayerSteering | None = None
+        self.log_completions_steps: int = 0
+        self.log_completions_num_prompts: int = 0
+        self._last_logged_step: int | None = None
         try:
             import wandb  # type: ignore
 
@@ -326,14 +277,59 @@ class RewardModelScorer:
         except ValueError:
             return None
 
+    def _gibberish_ratio(self, completion: str) -> float:
+        text = completion.strip()
+        if not text:
+            return 1.0
+
+        # Heuristic gibberish score in [0, 1]. Combines symbol noise and
+        # alphabetic nonsense patterns that a pure non-alpha ratio misses.
+        non_alpha_ratio = sum(not ch.isalpha() for ch in text) / max(len(text), 1)
+
+        runs_over3 = 0
+        current_run = 1
+        for i in range(1, len(text)):
+            if text[i] == text[i - 1]:
+                current_run += 1
+            else:
+                if current_run > 3:
+                    runs_over3 += current_run - 3
+                current_run = 1
+        if current_run > 3:
+            runs_over3 += current_run - 3
+        repeat_char_ratio = runs_over3 / max(len(text), 1)
+
+        alpha_tokens = re.findall(r"[A-Za-z]+", text)
+        if alpha_tokens:
+            long_token_ratio = sum(len(tok) >= 16 for tok in alpha_tokens) / len(alpha_tokens)
+            unique_ratio = len({tok.lower() for tok in alpha_tokens}) / len(alpha_tokens)
+            repetition_ratio = 1.0 - unique_ratio
+        else:
+            long_token_ratio = 1.0
+            repetition_ratio = 1.0
+
+        alpha_chars = [ch.lower() for ch in text if ch.isalpha()]
+        if alpha_chars:
+            vowels = sum(ch in "aeiou" for ch in alpha_chars)
+            vowel_ratio = vowels / len(alpha_chars)
+            vowel_deviation = max(0.0, abs(vowel_ratio - 0.4) - 0.25) / 0.35
+            vowel_deviation = min(1.0, max(0.0, vowel_deviation))
+        else:
+            vowel_deviation = 1.0
+
+        score = (
+            0.35 * non_alpha_ratio
+            + 0.2 * repeat_char_ratio
+            + 0.15 * long_token_ratio
+            + 0.2 * repetition_ratio
+            + 0.1 * vowel_deviation
+        )
+        return min(1.0, max(0.0, score))
+
     def _gibberish_penalty(self, completion: str) -> float:
         if self.gibberish_penalty_weight <= 0.0:
             return 0.0
-        text = completion.strip()
-        if not text:
-            return self.gibberish_penalty_weight
-        alpha = sum(not ch.isalpha() for ch in text)
-        ratio = alpha / max(len(text), 1)
+        ratio = self._gibberish_ratio(completion)
         # Penalize low alphabetic ratio (nonsense / symbols / noise).
         return self.gibberish_penalty_weight * ratio
 
@@ -419,9 +415,9 @@ class RewardModelScorer:
                 pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
             )
-            prompt_lens = enc["attention_mask"].sum(dim=-1)
+            input_width = enc["input_ids"].shape[1]
             for i in range(output_ids.size(0)):
-                gen_tokens = output_ids[i, int(prompt_lens[i].item()) :]
+                gen_tokens = output_ids[i, input_width:]
                 generated = self.tokenizer.decode(gen_tokens, skip_special_tokens=True)
                 score = self._extract_score(generated)
 
@@ -434,6 +430,7 @@ class RewardModelScorer:
         return scores
 
     def reward_fn(self, prompts: Sequence[Any], completions: Sequence[Any], **_: Any) -> list[float]:
+        trainer_state = _.get("trainer_state")
         joined_texts = []
         completion_texts: list[str] = []
         prompt_texts: list[str] = []
@@ -445,11 +442,16 @@ class RewardModelScorer:
             completion_texts.append(c_text)
             prompt_texts.append(raw_prompt_text)
         raw_scores = self.score_texts(joined_texts)
+        gibberish_ratios = [self._gibberish_ratio(c_text) for c_text in completion_texts]
         penalties = [self._gibberish_penalty(c_text) for c_text in completion_texts]
         base_nlls = self._base_nll(prompt_texts, completion_texts)
         scores = []
-        for score, penalty, base_nll in zip(raw_scores, penalties, base_nlls):
+        gate_hits = 0
+        for score, ratio, penalty, base_nll in zip(raw_scores, gibberish_ratios, penalties, base_nlls):
             adjusted = score - penalty - self.base_nll_weight * base_nll
+            if self.gibberish_gate_threshold is not None and ratio >= self.gibberish_gate_threshold:
+                adjusted = 0.0
+                gate_hits += 1
             scores.append(max(0.0, adjusted))
         if self._wandb is not None and raw_scores:
             self._wandb.log(
@@ -462,6 +464,11 @@ class RewardModelScorer:
                     "reward/penalty_std": float(statistics.pstdev(penalties))
                     if len(penalties) > 1
                     else 0.0,
+                    "reward/gibberish_ratio_mean": float(sum(gibberish_ratios) / len(gibberish_ratios)),
+                    "reward/gibberish_ratio_std": float(statistics.pstdev(gibberish_ratios))
+                    if len(gibberish_ratios) > 1
+                    else 0.0,
+                    "reward/gibberish_gate_rate": float(gate_hits / len(raw_scores)),
                     "reward/base_nll_mean": float(sum(base_nlls) / len(base_nlls))
                     if base_nlls
                     else 0.0,
@@ -470,6 +477,45 @@ class RewardModelScorer:
                     else 0.0,
                 }
             )
+            global_step = int(getattr(trainer_state, "global_step", 0)) if trainer_state is not None else 0
+            should_log_completions = (
+                self.log_completions_steps > 0
+                and self.log_completions_num_prompts > 0
+                and global_step > 0
+                and global_step % self.log_completions_steps == 0
+                and self._last_logged_step != global_step
+            )
+            if should_log_completions:
+                n_rows = min(self.log_completions_num_prompts, len(completion_texts))
+                rows = []
+                for i in range(n_rows):
+                    rows.append(
+                        [
+                            global_step,
+                            prompt_texts[i],
+                            completion_texts[i],
+                            float(raw_scores[i]),
+                            float(scores[i]),
+                            float(gibberish_ratios[i]),
+                            float(penalties[i]),
+                            float(base_nlls[i]),
+                        ]
+                    )
+                table = self._wandb.Table(
+                    columns=[
+                        "step",
+                        "prompt",
+                        "completion",
+                        "deception_score_raw",
+                        "reward_final",
+                        "gibberish_ratio",
+                        "gibberish_penalty",
+                        "base_nll",
+                    ],
+                    data=rows,
+                )
+                self._wandb.log({"samples/rewarded_completions": table})
+                self._last_logged_step = global_step
         return scores
 
 
@@ -499,10 +545,10 @@ def run_transfer_eval(
         pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
         eos_token_id=tokenizer.eos_token_id,
     )
-    prompt_lens = enc["attention_mask"].sum(dim=-1)
+    input_width = enc["input_ids"].shape[1]
     completions: list[str] = []
     for i in range(generated.size(0)):
-        comp_tokens = generated[i, int(prompt_lens[i].item()) :]
+        comp_tokens = generated[i, input_width:]
         completions.append(tokenizer.decode(comp_tokens, skip_special_tokens=True))
     rewards = scorer.reward_fn(prompts=prompts, completions=completions)
     for prompt, completion, reward in zip(prompts, completions, rewards):
@@ -567,10 +613,13 @@ def train_with_trl_grpo(
         use_chat_template=config.use_chat_template,
     )
     scorer.gibberish_penalty_weight = config.gibberish_penalty_weight
+    scorer.gibberish_gate_threshold = config.gibberish_gate_threshold
     scorer.base_nll_weight = config.base_nll_weight
     scorer.base_model = model
     scorer.base_tokenizer = tokenizer
     scorer.base_steering = steering
+    scorer.log_completions_steps = config.log_completions_steps
+    scorer.log_completions_num_prompts = config.log_completions_num_prompts
 
     train_dataset = build_prompt_dataset(chat_train_prompts)
     Path(config.output_dir).mkdir(parents=True, exist_ok=True)
@@ -610,18 +659,6 @@ def train_with_trl_grpo(
         optimizers=(optimizer, scheduler),
         callbacks=[
             SteeringMetricsCallback(steering),
-            CompletionLoggingCallback(
-                model=model,
-                tokenizer=tokenizer,
-                prompts=(
-                    chat_train_prompts + chat_eval_prompts
-                    if chat_eval_prompts
-                    else chat_train_prompts
-                ),
-                every_n_steps=config.log_completions_steps,
-                max_new_tokens=config.log_completions_max_new_tokens,
-                num_prompts=config.log_completions_num_prompts,
-            ),
         ],
     )
 
@@ -706,6 +743,12 @@ def parse_args() -> argparse.Namespace:
         help="Subtract this from reward when completion looks like gibberish.",
     )
     parser.add_argument(
+        "--gibberish-gate-threshold",
+        type=float,
+        default=ExperimentConfig.gibberish_gate_threshold,
+        help="If gibberish ratio is >= threshold, set reward to 0 (disabled when unset).",
+    )
+    parser.add_argument(
         "--base-nll-weight",
         type=float,
         default=ExperimentConfig.base_nll_weight,
@@ -722,12 +765,6 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=ExperimentConfig.log_completions_num_prompts,
         help="Number of prompts to sample when logging completions.",
-    )
-    parser.add_argument(
-        "--log-completions-max-new-tokens",
-        type=int,
-        default=ExperimentConfig.log_completions_max_new_tokens,
-        help="Max new tokens for logged completions.",
     )
     parser.add_argument(
         "--steering-init-zero",
@@ -797,10 +834,10 @@ def main() -> None:
         wandb_project=args.wandb_project,
         wandb_run_name=args.wandb_run_name,
         gibberish_penalty_weight=args.gibberish_penalty_weight,
+        gibberish_gate_threshold=args.gibberish_gate_threshold,
         base_nll_weight=args.base_nll_weight,
         log_completions_steps=args.log_completions_steps,
         log_completions_num_prompts=args.log_completions_num_prompts,
-        log_completions_max_new_tokens=args.log_completions_max_new_tokens,
         steering_init_zero=args.steering_init_zero,
         steering_weight_decay=args.steering_weight_decay,
         use_chat_template=args.use_chat_template,
