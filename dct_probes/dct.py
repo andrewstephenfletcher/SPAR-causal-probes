@@ -53,8 +53,11 @@ class SlicedModel(nn.Module):
         for i in range(len(rgetattr(self.model, self.layers_name))):
             rgetattr(self.model, self.layers_name)[i].self_attn.layer_idx = i
 
-        # actually run the forward pass
-        result = self.model(inputs_embeds=h, output_hidden_states=True, use_cache=False).hidden_states[self.end_layer-self.start_layer]
+        # actually run the forward pass (use backbone only to avoid lm_head memory overhead during JVP)
+        backbone = self.model.model if hasattr(self.model, "model") else self.model
+        model_dtype = next(backbone.parameters()).dtype
+        result = backbone(inputs_embeds=h.to(model_dtype), output_hidden_states=True, use_cache=False).hidden_states[self.end_layer-self.start_layer]
+        result = result.to(h.dtype)  # cast back to caller's dtype (e.g. float32) for DCT math
 
         # reset model to un-mutated state
         self.reset()
@@ -213,16 +216,17 @@ class LinearDCT():
             jvp_batch = vmap(lambda v, X, Y: jvp_single(v,X,Y), in_dims=(1,None,None),
                              out_dims=2,chunk_size=factor_batch_size)
 
+        data_dtype = X.dtype
         if method=="projected":
             # if projected we will calculate VJPs at random output directions
-            U_rand = F.normalize(torch.randn(d_model, dim_output_projection, device=device), dim=0)
+            U_rand = F.normalize(torch.randn(d_model, dim_output_projection, device=device, dtype=data_dtype), dim=0)
         else:
             # otherwise use all output directions in standard basis
             dim_output_projection = d_model
-            V_in = torch.eye(d_model, device=device)
+            V_in = torch.eye(d_model, device=device, dtype=data_dtype)
 
         # will calculate jacobian at zero
-        V0 = torch.zeros(d_model, dim_output_projection, device=device)
+        V0 = torch.zeros(d_model, dim_output_projection, device=device, dtype=data_dtype)
 
         # loop over data
         print("computing jacobian...")
@@ -374,8 +378,8 @@ class ExponentialDCT():
     def _init_rand(self, delta_acts, X, Y):
         print("initializing V,U...")
         # initialize V randomly
-        self.V = F.normalize(torch.randn(self.d_source, self.num_factors, device=self.device), dim=0)
-        self.U = F.normalize(torch.randn(self.d_target, self.num_factors, device=self.device), dim=0)
+        self.V = F.normalize(torch.randn(self.d_source, self.num_factors, device=self.device, dtype=X.dtype), dim=0)
+        self.U = F.normalize(torch.randn(self.d_target, self.num_factors, device=self.device, dtype=X.dtype), dim=0)
         pass
 
     def _init_jacobian(self, delta_acts_single, X, Y):
@@ -553,7 +557,7 @@ class ModelEditor():
 
         # set bias to vec
         module_obj = rgetattr(self.layers[layer_idx], module_name)
-        module_obj.bias = nn.Parameter(vec.to(module_obj.weight.device))
+        module_obj.bias = nn.Parameter(vec.to(device=module_obj.weight.device, dtype=module_obj.weight.dtype))
         pass
 
     def ablate(self, vec, layer_idxs=None, modules=["mlp.out","attn.out"]):

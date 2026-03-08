@@ -163,8 +163,8 @@ def construct_unsteered_activations(model, tokenizer, EXAMPLES, sliced_model):
 
     d_model = model.config.hidden_size
 
-    X = torch.zeros(NUM_SAMPLES, MAX_SEQ_LEN, d_model, device="cpu", dtype=model.dtype)
-    Y = torch.zeros(NUM_SAMPLES, MAX_SEQ_LEN, d_model, device="cpu", dtype=model.dtype)
+    X = torch.zeros(NUM_SAMPLES, MAX_SEQ_LEN, d_model, device="cpu", dtype=torch.float32)
+    Y = torch.zeros(NUM_SAMPLES, MAX_SEQ_LEN, d_model, device="cpu", dtype=torch.float32)
 
     for t in tqdm(range(0, NUM_SAMPLES, FORWARD_BATCH_SIZE)):
         with torch.no_grad():
@@ -235,7 +235,7 @@ def rank_vectors(exp_dct, model, tokenizer, delta_acts_single, X, Y) -> tuple[to
     yes_token = tokenizer.encode(" Yes", add_special_tokens=False)[0]
     no_token  = tokenizer.encode(" No",  add_special_tokens=False)[0]
     with torch.no_grad():
-        target_vec = model.lm_head.weight.data[no_token] - model.lm_head.weight.data[yes_token]
+        target_vec = (model.lm_head.weight.data[no_token] - model.lm_head.weight.data[yes_token]).float()
 
     scores, indices = exp_dct.rank(
         delta_acts_single, X, Y,
