@@ -57,7 +57,7 @@ torch.set_default_dtype(torch.float32)
 
 
 def load_dct_params():
-    with open("dct_probes/dct_params.json", "r") as f:
+    with open("dct_params.json", "r") as f:
         params = json.load(f)
     return params
 
@@ -83,7 +83,7 @@ def load_model(MODEL_NAME, TOKENIZER_NAME):
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         device_map=DEVICE,
-        torch_dtype=torch.float32,
+        torch_dtype=torch.bfloat16,
         trust_remote_code=True,
         _attn_implementation="eager",
     )
@@ -99,7 +99,7 @@ def load_model(MODEL_NAME, TOKENIZER_NAME):
     return model, tokenizer
 
 
-def load_vectors(vectors_dir="dct_probes/vectors"):
+def load_vectors(vectors_dir="vectors"):
     vectors_dir = Path(vectors_dir)
     data = torch.load(vectors_dir / "dct_vectors.pt", weights_only=True)
 
@@ -119,7 +119,7 @@ def load_vectors(vectors_dir="dct_probes/vectors"):
     return U, V, scores, indices, config
 
 
-def load_steering_prompts(path="dct_probes/data/steering_prompts.jsonl") -> list[dict]:
+def load_steering_prompts(path="data/steering_prompts.jsonl") -> list[dict]:
     with open(path, "r") as f:
         return [json.loads(line) for line in f]
 
@@ -265,7 +265,7 @@ async def judge_all(client, completions_list, max_concurrent=JUDGE_MAX_CONCURREN
     return completions_list, usage_summary
 
 
-def save_results(results, usage_summary, output_dir="dct_probes/results"):
+def save_results(results, usage_summary, output_dir="results"):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 

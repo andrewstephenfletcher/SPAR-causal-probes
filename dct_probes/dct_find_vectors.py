@@ -44,7 +44,7 @@ print(f"Using device: {DEVICE}")
 torch.set_default_dtype(torch.float32)
 
 def load_dct_params():
-    with open("dct_probes/dct_params.json", "r") as f:
+    with open("dct_params.json", "r") as f:
         params = json.load(f)
     return params
 
@@ -84,7 +84,7 @@ def load_model(MODEL_NAME, TOKENIZER_NAME):
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         device_map=DEVICE,
-        torch_dtype=torch.float32,
+        torch_dtype=torch.bfloat16,
         trust_remote_code=True,
         _attn_implementation="eager",
     )
@@ -137,17 +137,17 @@ def sliced_sanity_check(model, tokenizer):
     )
     with torch.no_grad():
         out = sliced_test(hidden_states[SOURCE_LAYER_IDX])
-        assert torch.allclose(out, hidden_states[TARGET_LAYER_IDX], atol=1e-4), \
+        assert torch.allclose(out, hidden_states[TARGET_LAYER_IDX], atol=1e-2), \
             f"SlicedModel mismatch! max_diff={( out - hidden_states[TARGET_LAYER_IDX]).abs().max()}"
     print("SlicedModel sanity check passed.")
 
 def load_got_statements(dataset: str = "cities", label: int = 1) -> list[str]:
-    path = Path(f"dct_probes/data/got_datasets/{dataset}.csv")
+    path = Path(f"data/got_datasets/{dataset}.csv")
     df = pd.read_csv(path)
     return df[df["label"] == label]["statement"].tolist()
 
 def load_calibration_texts() -> list[str]:
-    path = Path("dct_probes/data/calibration_texts.jsonl")
+    path = Path("data/calibration_texts.jsonl")
     with open(path, "r") as f:
         return [json.loads(line)["text"] for line in f]
 
@@ -247,7 +247,7 @@ def rank_vectors(exp_dct, model, tokenizer, delta_acts_single, X, Y) -> tuple[to
     print(f"Top-5 scores:         {scores[:5].tolist()}")
     return scores, indices
 
-def save_vectors(U, V, exp_dct, params, scores=None, indices=None, output_dir="dct_probes/vectors"):
+def save_vectors(U, V, exp_dct, params, scores=None, indices=None, output_dir="vectors"):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 

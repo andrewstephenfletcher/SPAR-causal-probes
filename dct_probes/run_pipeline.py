@@ -24,8 +24,8 @@ def run_step(name, script_path):
 
     start = time.time()
     result = subprocess.run(
-        [sys.executable, str(script_path)],
-        cwd=str(script_path.parent),
+        [sys.executable, str(script_path.resolve())],
+        cwd=str(script_path.parent.resolve()),
     )
     elapsed = time.time() - start
 

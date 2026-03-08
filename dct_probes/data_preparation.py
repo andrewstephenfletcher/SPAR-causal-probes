@@ -223,8 +223,9 @@ def create_calibration_texts(n_sequences: int = 128, max_length: int = 64) -> li
 
 def main():
 
-    output_dir = Path("dct_probes/data")
+    output_dir = Path("data")
     output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "got_datasets").mkdir(parents=True, exist_ok=True)
 
     got_datasets = create_got_datasets()
 
