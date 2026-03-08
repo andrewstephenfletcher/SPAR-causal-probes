@@ -1,0 +1,44 @@
+{
+  "openrouter": {
+    "api_key_env": "OPENROUTER_API_KEY",
+    "base_url": "https://openrouter.ai/api/v1",
+    "timeout_seconds": 120,
+    "max_retries": 3,
+    "app_name": "spar-causal-probes-liarsbench-pipeline",
+    "app_url": "https://github.com/your-org/your-repo"
+  },
+  "generator": {
+    "model": "openai/gpt-4o-mini",
+    "temperature": 0.9,
+    "max_tokens": 400
+  },
+  "judge": {
+    "model": "anthropic/claude-3.7-sonnet",
+    "temperature": 0.0,
+    "max_tokens": 300
+  },
+  "input": {
+    "path": "liarsbench_generation_pipeline/natural_questions_prompts_100.jsonl",
+    "prompt_field": "prompt",
+    "limit": 1000
+  },
+  "generation": {
+    "mode": "targeted_deception",
+    "samples_per_prompt": 1,
+    "deception_types": [
+      "convincing-game",
+      "gender-secret",
+      "harm-pressure-choice",
+      "harm-pressure-knowledge-report",
+      "insider-trading",
+      "soft-trigger",
+      "other"
+    ],
+    "seed": 42
+  },
+  "output": {
+    "path": "data/generated/liarsbench_style_synthetic_targeted_4o-mini_100.jsonl",
+    "error_log_path": "data/generated/liarsbench_style_synthetic_targeted.errors.jsonl",
+    "print_errors": true
+  }
+}
