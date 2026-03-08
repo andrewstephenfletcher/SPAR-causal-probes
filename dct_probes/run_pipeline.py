@@ -16,7 +16,12 @@ import time
 from pathlib import Path
 
 
-def run_step(name, script_path):
+def run_step(name, script_path, skip_if_exists=None):
+    if skip_if_exists and all(p.exists() for p in skip_if_exists):
+        files = ", ".join(str(p) for p in skip_if_exists)
+        print(f"\n  SKIP: {name} (outputs already exist: {files})")
+        return
+
     print(f"\n{'='*60}")
     print(f"  STEP: {name}")
     print(f"  Script: {script_path}")
@@ -37,26 +42,26 @@ def run_step(name, script_path):
 
 
 def main():
-    base = Path("dct_probes")
+    base = Path(__file__).parent
 
     print("DCT PROBE EXPERIMENT PIPELINE")
     print(f"Working directory: {base.resolve()}")
 
     steps = [
-        ("Data preparation", base / "data_preparation.py"),
-        ("DCT vector discovery", base / "dct_find_vectors.py"),
-        ("Steering + LLM judge", base / "judge_vectors.py"),
+        ("Data preparation",    base / "data_preparation.py",  [base / "data" / "steering_prompts.jsonl"]),
+        ("DCT vector discovery", base / "dct_find_vectors.py", [base / "vectors" / "dct_vectors.pt"]),
+        ("Steering + LLM judge", base / "judge_vectors.py",    [base / "results" / "judge_results.jsonl"]),
     ]
 
     # Check all scripts exist before starting
-    for name, path in steps:
+    for name, path, _ in steps:
         if not path.exists():
             print(f"ERROR: {path} not found")
             sys.exit(1)
 
     total_start = time.time()
-    for name, path in steps:
-        run_step(name, path)
+    for name, path, skip_if_exists in steps:
+        run_step(name, path, skip_if_exists)
 
     total_elapsed = time.time() - total_start
     print(f"\n{'='*60}")

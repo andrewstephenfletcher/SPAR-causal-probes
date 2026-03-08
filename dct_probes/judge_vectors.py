@@ -257,7 +257,7 @@ async def judge_all(client, completions_list, max_concurrent=JUDGE_MAX_CONCURREN
 
     for comp, judgment in zip(completions_list, judgments):
         comp["judge_score"] = judgment["score"]
-        comp["judge_reasoning"] = judgment["reasoning"]
+        comp["judge_reasoning"] = judgment.get("reasoning", "")
 
     n_errors = sum(1 for j in judgments if j["score"] == -1)
     print(f"Judged {len(judgments)} completions. Errors: {n_errors}")
@@ -285,24 +285,42 @@ async def main():
     params = load_dct_params()
     set_dct_params(params)
 
-    model, tokenizer = load_model(MODEL_NAME, TOKENIZER_NAME)
+    results_dir = Path("results")
+    results_dir.mkdir(parents=True, exist_ok=True)
+    completions_cache = results_dir / "completions.jsonl"
+    judge_results_path = results_dir / "judge_results.jsonl"
 
-    _U, V, _scores, _indices, _config = load_vectors()
+    if judge_results_path.exists():
+        print(f"Judge results already exist at {judge_results_path}, skipping.")
+        return
 
-    prompts = load_steering_prompts()
+    if completions_cache.exists():
+        print(f"Loading cached completions from {completions_cache}")
+        with open(completions_cache) as f:
+            all_completions = [json.loads(line) for line in f]
+        print(f"Loaded {len(all_completions)} completions")
+    else:
+        model, tokenizer = load_model(MODEL_NAME, TOKENIZER_NAME)
+        _U, V, _scores, _indices, _config = load_vectors()
+        prompts = load_steering_prompts()
+        model_editor = dct.ModelEditor(model, layers_name="model.layers")
 
-    model_editor = dct.ModelEditor(model, layers_name="model.layers")
+        baseline = generate_baseline_completions(model, tokenizer, prompts)
+        steered  = generate_steered_completions(
+            model, tokenizer, model_editor, V, prompts,
+            input_scale=INPUT_SCALE, source_layer_idx=SOURCE_LAYER_IDX,
+        )
 
-    baseline = generate_baseline_completions(model, tokenizer, prompts)
-    steered  = generate_steered_completions(
-        model, tokenizer, model_editor, V, prompts,
-        input_scale=INPUT_SCALE, source_layer_idx=SOURCE_LAYER_IDX,
-    )
+        all_completions = baseline + steered
+        with open(completions_cache, "w") as f:
+            for c in all_completions:
+                f.write(json.dumps(c) + "\n")
+        print(f"Saved {len(all_completions)} completions to {completions_cache}")
 
-    all_completions = baseline + steered
     all_completions, usage_summary = await judge_all(client, all_completions)
 
     save_results(all_completions, usage_summary)
+    completions_cache.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

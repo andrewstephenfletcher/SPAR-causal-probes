@@ -270,6 +270,14 @@ def main():
     params = load_dct_params()
     set_dct_params(params)
 
+    vectors_dir = Path("vectors")
+    vectors_path = vectors_dir / "dct_vectors.pt"
+    activations_cache = vectors_dir / "activations_cache.pt"
+
+    if vectors_path.exists():
+        print(f"Vectors already exist at {vectors_path}, skipping.")
+        return
+
     model, tokenizer = load_model(MODEL_NAME, TOKENIZER_NAME)
 
     if NUM_SAMPLES == 1:
@@ -283,7 +291,16 @@ def main():
 
     sliced_model = create_sliced_model(model)
 
-    X, Y = construct_unsteered_activations(model, tokenizer, EXAMPLES, sliced_model)
+    if activations_cache.exists():
+        print(f"Loading cached activations from {activations_cache}")
+        cache = torch.load(activations_cache, weights_only=True)
+        X, Y = cache["X"], cache["Y"]
+        print(f"X shape: {X.shape}, Y shape: {Y.shape}")
+    else:
+        X, Y = construct_unsteered_activations(model, tokenizer, EXAMPLES, sliced_model)
+        vectors_dir.mkdir(parents=True, exist_ok=True)
+        torch.save({"X": X, "Y": Y}, activations_cache)
+        print(f"Saved activations cache to {activations_cache}")
 
     delta_acts_single, delta_acts = find_delta_acts(sliced_model)
 
@@ -296,6 +313,8 @@ def main():
         save_vectors(U, V, exp_dct, params, scores=scores, indices=indices)
     else:
         save_vectors(U, V, exp_dct, params)
+
+    activations_cache.unlink(missing_ok=True)
 
 if __name__ == "__main__":
     main()
