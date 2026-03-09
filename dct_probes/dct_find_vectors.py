@@ -6,6 +6,9 @@ Finds and savessteering vectors using Deep Causal Transcoding (DCT).
 
 """
 
+import os
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")  # needed for linalg_svd on MPS
+
 import gc
 import torch
 import dct

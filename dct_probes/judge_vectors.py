@@ -6,9 +6,11 @@ and judges truthfulness of completions using an LLM judge.
 
 """
 
+import os
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")  # needed for linalg_svd on MPS
+
 import gc
 import re
-import os
 import json
 import asyncio
 from pathlib import Path
