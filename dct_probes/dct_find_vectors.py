@@ -15,7 +15,10 @@ from torch import vmap
 from tqdm import tqdm
 
 import pandas as pd
+from dotenv import load_dotenv
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+load_dotenv()
 
 # Drop any variables from a previous run
 for _var in ["model", "tokenizer", "sliced_model", "delta_acts_single", "delta_acts",
