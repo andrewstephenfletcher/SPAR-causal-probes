@@ -71,7 +71,7 @@ class DeltaActivations(nn.Module):
         self.target_position_indices = target_position_indices
     def forward(self, theta, x, y):
         '''
-        computes average delta in target layer activations as a 
+        computes average delta in target layer activations as a
         function of bias theta
         '''
         delta = self.sliced_model(x+theta.to(dtype=x.dtype)) - y # batch_size x seq_len x d_model
@@ -86,45 +86,45 @@ class StreamingAverage:
     def __init__(self):
         self.count = 0
         self.mean = None
-    
+
     def update(self, batch: torch.Tensor) -> torch.Tensor:
         """
         Updates the streaming average with a new batch of data.
-        
+
         Args:
             batch: Tensor of shape (batch_size, dim1, ..., dimk)
                   The first dimension is assumed to be the batch dimension
-        
+
         Returns:
             Current mean after incorporating the new batch
         """
         batch_size = batch.size(0)
-        
+
         if self.mean is None:
             # First batch - initialize mean with the correct shape
             self.mean = batch.mean(dim=0)
             self.count = batch_size
             return self.mean
-        
+
         # Update count
         new_count = self.count + batch_size
-        
+
         # Compute batch mean
         batch_mean = batch.mean(dim=0)
-        
+
         # Update mean using formula:
         # new_mean = old_mean + (batch_mean - old_mean) * (batch_size / new_count)
         self.mean = self.mean + (batch_mean - self.mean) * (batch_size / new_count)
         self.count = new_count
-        
+
         return self.mean
-    
+
     def get_mean(self) -> torch.Tensor:
         """Returns the current mean."""
         if self.mean is None:
             raise ValueError("No data has been processed yet")
         return self.mean
-    
+
     def reset(self):
         """Resets the streaming average."""
         self.count = 0
@@ -183,6 +183,18 @@ class SteeringCalibrator():
 
         # On MPS restrict the bracket to scales representable in bfloat16
         bracket = [r_min_mps, 100.0] if use_mps else [0.001, 100.0]
+
+        # Add this temporarily right before the root_scalar line in dct.py:
+        r_lo = bracket[0]
+        r_hi = bracket[1]
+        f_lo = jacobian_ratio(r_lo) - self.target_ratio
+        f_hi = jacobian_ratio(r_hi) - self.target_ratio
+        print(f"  bracket: [{r_lo}, {r_hi}]")
+        print(f"  f(lo) = jacobian_ratio({r_lo}) - {self.target_ratio} = {f_lo:.6f}")
+        print(f"  f(hi) = jacobian_ratio({r_hi}) - {self.target_ratio} = {f_hi:.6f}")
+        print(f"  jacobian_ratio(lo) = {f_lo + self.target_ratio:.6f}")
+        print(f"  jacobian_ratio(hi) = {f_hi + self.target_ratio:.6f}")
+
         soln = root_scalar(lambda r: jacobian_ratio(r)-self.target_ratio, bracket=bracket)
         self.R = soln.root
         return self.R
@@ -190,7 +202,7 @@ class LinearDCT():
     def __init__(self, num_factors=512):
         self.num_factors=num_factors
         pass
-        
+
     def fit(self, delta_acts_single, X, Y, method="projected", batch_size=1, dim_output_projection=32, factor_batch_size=16, input_scale=1.0):
         assert method in ["full","projected"]
         delta_acts = vmap(delta_acts_single, in_dims=(1,None,None), out_dims=2,
@@ -289,11 +301,11 @@ class QuadraticDCT():
     def _init_jacobian(self, delta_acts_single, X, Y):
         self.linear_dct = LinearDCT(num_factors = self.num_factors)
         self.U, self.V = self.linear_dct.fit(delta_acts_single, X, Y,
-                                             method="projected",dim_output_projection=self.d_proj, 
+                                             method="projected",dim_output_projection=self.d_proj,
                                              batch_size=self.batch_size,factor_batch_size=self.factor_batch_size)
         pass
-        
-        
+
+
     def fit(self, delta_acts_single, X, Y, batch_size=1, factor_batch_size=16, init="jacobian", d_proj=32,
             max_iters=20, compute_intermediate_objective=False):
         assert(init in ["random","jacobian"])
@@ -384,10 +396,10 @@ class ExponentialDCT():
 
     def _init_jacobian(self, delta_acts_single, X, Y):
         self.linear_dct = LinearDCT(num_factors = self.num_factors)
-        self.U, self.V = self.linear_dct.fit(delta_acts_single, X, Y, method="projected", dim_output_projection=self.d_proj, 
-                                             batch_size=self.batch_size,factor_batch_size=self.factor_batch_size, 
+        self.U, self.V = self.linear_dct.fit(delta_acts_single, X, Y, method="projected", dim_output_projection=self.d_proj,
+                                             batch_size=self.batch_size,factor_batch_size=self.factor_batch_size,
                                              input_scale=self.input_scale)
-        pass                
+        pass
 
     def rank(self, delta_acts_single, X, Y, target_vec=None, batch_size=1, factor_batch_size=16):
         delta_acts = vmap(delta_acts_single, in_dims=(1,None,None), out_dims=2,
@@ -398,7 +410,7 @@ class ExponentialDCT():
             for b in tqdm(range(0, num_samples, batch_size)):
                 x = X[b:b+self.batch_size,:,:].to(self.device)
                 y = Y[b:b+self.batch_size,:,:].to(self.device)
-                Delta_batch = delta_acts(self.input_scale * self.V, x, y)              
+                Delta_batch = delta_acts(self.input_scale * self.V, x, y)
                 Delta_avg.update(Delta_batch)
             if target_vec is None:
                 self.alphas = (Delta_avg.get_mean().float() * self.U.float()).sum(dim=0)
@@ -408,9 +420,9 @@ class ExponentialDCT():
                 self.scores, self.indices = torch.sort(self.scores, descending=True)
             else:
                 self.scores = Delta_avg.get_mean().t() @ target_vec.to(self.device)
-                self.scores, self.indices = torch.sort(self.scores, descending=True)                
+                self.scores, self.indices = torch.sort(self.scores, descending=True)
         return self.scores, self.indices
-        
+
     def fit(self, delta_acts_single, X, Y, batch_size=1, factor_batch_size=16, init="random", d_proj=32,
             input_scale=1.0, max_iters=10, beta=1.0):
         '''Fit DCT
@@ -421,11 +433,11 @@ class ExponentialDCT():
         (theta, x, y)
 
         X (tensor) : tensor of source activations (n_samples, d_source)
-        
+
         Y (tensor) : tensor of target activations (n_samples, d_target)
-        
+
         batch_size (int) : batch size over samples
-        
+
         factor_batch_size (int) : batch size over factors
 
         init (string): initialization strategy {"random", "jacobian"}
@@ -497,14 +509,14 @@ class ExponentialDCT():
             fdots.append(fdot_all)
             G_U = G_U_avg.get_mean()
             G_V = G_V_avg.get_mean()
-        
+
             # update
             with torch.no_grad():
                 self.U.data = F.normalize(self.beta*G_U+(1-self.beta)*self.U.data, dim=0)
                 self.V.data = F.normalize(self.beta*G_V+(1-self.beta)*self.V.data, dim=0)
                 objective_values.append(fdot_all)
 
-        self.objective_values = objective_values    
+        self.objective_values = objective_values
         return self.U, self.V
 
 class ModelEditor():
@@ -588,4 +600,4 @@ class ModelEditor():
                 module_obj.weight.data += torch.einsum("i,j->ij", vec, left_mult)
             del self.ablated_modules[(layer_idx, module)]
         pass
-        
+

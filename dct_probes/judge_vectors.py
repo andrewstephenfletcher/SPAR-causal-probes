@@ -56,10 +56,12 @@ print(f"Using device: {DEVICE}")
 torch.set_default_dtype(torch.float32)
 
 
-def load_dct_params():
+def load_dct_params(experiment: str):
     with open("dct_params.json", "r") as f:
-        params = json.load(f)
-    return params
+        all_params = json.load(f)
+    if experiment not in all_params:
+        raise ValueError(f"Unknown experiment '{experiment}'. Available: {list(all_params)}")
+    return all_params[experiment]
 
 
 def set_dct_params(params):
@@ -83,7 +85,7 @@ def load_model(MODEL_NAME, TOKENIZER_NAME):
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         device_map=DEVICE,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float32,
         trust_remote_code=True,
         _attn_implementation="eager",
     )
@@ -274,10 +276,17 @@ def save_results(results, usage_summary, output_dir="results"):
 
 
 async def main():
-    params = load_dct_params()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--experiment", required=True, help="Experiment name from dct_params.json")
+    args = parser.parse_args()
+
+    params = load_dct_params(args.experiment)
     set_dct_params(params)
 
-    results_dir = Path("results")
+    experiment_dir = Path("experiments") / args.experiment
+    vectors_dir = experiment_dir / "vectors"
+    results_dir = experiment_dir / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
     completions_cache = results_dir / "completions.jsonl"
     judge_results_path = results_dir / "judge_results.jsonl"
@@ -293,14 +302,15 @@ async def main():
         print(f"Loaded {len(all_completions)} completions")
     else:
         model, tokenizer = load_model(MODEL_NAME, TOKENIZER_NAME)
-        _U, V, _scores, _indices, _config = load_vectors()
+        _U, V, _scores, _indices, run_config = load_vectors(vectors_dir)
+        effective_scale = INPUT_SCALE if INPUT_SCALE is not None else run_config["INPUT_SCALE"]
         prompts = load_steering_prompts()
         model_editor = dct.ModelEditor(model, layers_name="model.layers")
 
         baseline = generate_baseline_completions(model, tokenizer, prompts)
         steered  = generate_steered_completions(
             model, tokenizer, model_editor, V, prompts,
-            input_scale=INPUT_SCALE, source_layer_idx=SOURCE_LAYER_IDX,
+            input_scale=effective_scale, source_layer_idx=SOURCE_LAYER_IDX,
         )
 
         all_completions = baseline + steered
@@ -311,7 +321,7 @@ async def main():
 
     all_completions, usage_summary = await judge_all(client, all_completions)
 
-    save_results(all_completions, usage_summary)
+    save_results(all_completions, usage_summary, output_dir=results_dir)
     completions_cache.unlink(missing_ok=True)
 
 

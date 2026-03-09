@@ -43,10 +43,12 @@ else:
 print(f"Using device: {DEVICE}")
 torch.set_default_dtype(torch.float32)
 
-def load_dct_params():
+def load_dct_params(experiment: str):
     with open("dct_params.json", "r") as f:
-        params = json.load(f)
-    return params
+        all_params = json.load(f)
+    if experiment not in all_params:
+        raise ValueError(f"Unknown experiment '{experiment}'. Available: {list(all_params)}")
+    return all_params[experiment]
 
 def set_dct_params(params):
     global MODEL_NAME, TOKENIZER_NAME, INPUT_SCALE, NUM_SAMPLES, FORWARD_BATCH_SIZE, \
@@ -84,7 +86,7 @@ def load_model(MODEL_NAME, TOKENIZER_NAME):
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
         device_map=DEVICE,
-        torch_dtype=torch.bfloat16,
+        torch_dtype=torch.float32,  # instead of bfloat16
         trust_remote_code=True,
         _attn_implementation="eager",
     )
@@ -163,8 +165,8 @@ def construct_unsteered_activations(model, tokenizer, EXAMPLES, sliced_model):
 
     d_model = model.config.hidden_size
 
-    X = torch.zeros(NUM_SAMPLES, MAX_SEQ_LEN, d_model, device="cpu", dtype=torch.float32)
-    Y = torch.zeros(NUM_SAMPLES, MAX_SEQ_LEN, d_model, device="cpu", dtype=torch.float32)
+    X = torch.zeros(NUM_SAMPLES, MAX_SEQ_LEN, d_model, device="cpu", dtype=model.dtype)
+    Y = torch.zeros(NUM_SAMPLES, MAX_SEQ_LEN, d_model, device="cpu", dtype=model.dtype)
 
     for t in tqdm(range(0, NUM_SAMPLES, FORWARD_BATCH_SIZE)):
         with torch.no_grad():
@@ -266,11 +268,15 @@ def save_vectors(U, V, exp_dct, params, scores=None, indices=None, output_dir="v
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--experiment", required=True, help="Experiment name from dct_params.json")
+    args = parser.parse_args()
 
-    params = load_dct_params()
+    params = load_dct_params(args.experiment)
     set_dct_params(params)
 
-    vectors_dir = Path("vectors")
+    vectors_dir = Path("experiments") / args.experiment / "vectors"
     vectors_path = vectors_dir / "dct_vectors.pt"
     activations_cache = vectors_dir / "activations_cache.pt"
 
@@ -305,14 +311,15 @@ def main():
     delta_acts_single, delta_acts = find_delta_acts(sliced_model)
 
     INPUT_SCALE = calibrate_steering(delta_acts_single, X, Y)
+    params["INPUT_SCALE"] = INPUT_SCALE  # persist calibrated value to dct_run_config.json
 
     exp_dct, U, V = compute_exp_dct(delta_acts_single, X, Y, input_scale=INPUT_SCALE)
 
     if NUM_SAMPLES == 1:
         scores, indices = rank_vectors(exp_dct, model, tokenizer, delta_acts_single, X, Y)
-        save_vectors(U, V, exp_dct, params, scores=scores, indices=indices)
+        save_vectors(U, V, exp_dct, params, scores=scores, indices=indices, output_dir=vectors_dir)
     else:
-        save_vectors(U, V, exp_dct, params)
+        save_vectors(U, V, exp_dct, params, output_dir=vectors_dir)
 
     activations_cache.unlink(missing_ok=True)
 

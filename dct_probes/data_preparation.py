@@ -23,7 +23,7 @@ def create_got_datasets() -> dict[str, pd.DataFrame]:
 
     if not GOT_ROOT.exists():
         subprocess.run(
-            ["git", "clone", "https://github.com/saprmarks/geometry-of-truth", str(GOT_ROOT)],
+            ["git", "clone", "--template=", "https://github.com/saprmarks/geometry-of-truth", str(GOT_ROOT)],
             check=True
         )
     else:
@@ -197,7 +197,7 @@ def create_calibration_texts(n_sequences: int = 128, max_length: int = 64) -> li
 
 def main():
 
-    output_dir = Path("data")
+    output_dir = Path(__file__).parent / "data"
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "got_datasets").mkdir(parents=True, exist_ok=True)
 
