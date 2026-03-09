@@ -8,6 +8,7 @@ and judges truthfulness of completions using an LLM judge.
 
 import os
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")  # needed for linalg_svd on MPS
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")   # suppress fork warning during asyncio judging
 
 import gc
 import re
