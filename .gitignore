@@ -213,3 +213,6 @@ af_experiments/dct/wandb
 af_experiments/dct/probes
 dct_probes/data
 geometry-of-truth
+
+#plotting
+dct_probes/images
