@@ -1,0 +1,8 @@
+{
+  "model": "meta-llama/llama-3.3-70b-instruct",
+  "total_input_tokens": 208075,
+  "total_output_tokens": 50918,
+  "estimated_cost_usd": 0.162989,
+  "price_per_1m_input_usd": 0.59,
+  "price_per_1m_output_usd": 0.79
+}

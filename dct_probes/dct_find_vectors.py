@@ -61,7 +61,7 @@ def set_dct_params(params):
            BACKWARD_BATCH_SIZE, MAX_SEQ_LEN, CALIBRATION_SAMPLE_SIZE, \
            CALIBRATION_PROMPT_SAMPLE_SIZE, DIM_OUTPUT_PROJECTION, NUM_ITERS, \
            NUM_FACTORS, FACTOR_BATCH_SIZE, SOURCE_LAYER_IDX, TARGET_LAYER_IDX, SYSTEM_PROMPT, \
-           TOKEN_IDXS
+           TOKEN_IDXS, DATASET_SOURCE
     MODEL_NAME = params["MODEL_NAME"]
     TOKENIZER_NAME = params["TOKENIZER_NAME"]
     INPUT_SCALE = params["INPUT_SCALE"]
@@ -79,6 +79,7 @@ def set_dct_params(params):
     TARGET_LAYER_IDX = params["TARGET_LAYER_IDX"]
     SYSTEM_PROMPT = params["SYSTEM_PROMPT"]
     TOKEN_IDXS = slice(params["TOKEN_IDXS_START"], params["TOKEN_IDXS_STOP"])
+    DATASET_SOURCE = params.get("DATASET_SOURCE", "got_cities")
 
 def load_model(MODEL_NAME, TOKENIZER_NAME):
 
@@ -153,6 +154,20 @@ def load_got_statements(dataset: str = "cities", label: int = 1) -> list[str]:
     path = Path(f"data/got_datasets/{dataset}.csv")
     df = pd.read_csv(path)
     return df[df["label"] == label]["statement"].tolist()
+
+def load_c4_texts(n: int) -> list[str]:
+    from datasets import load_dataset
+    print(f"  Loading {n} texts from allenai/c4 (en, validation split)...")
+    ds = load_dataset("allenai/c4", "en", split="validation", streaming=True)
+    texts = []
+    for example in ds:
+        words = example["text"].split()[:64]
+        text = " ".join(words)
+        if len(text.strip()) > 20:
+            texts.append(text)
+        if len(texts) >= n:
+            break
+    return texts
 
 def load_calibration_texts() -> list[str]:
     path = Path("data/calibration_texts.jsonl")
@@ -292,10 +307,16 @@ def main():
 
     model, tokenizer = load_model(MODEL_NAME, TOKENIZER_NAME)
 
-    if NUM_SAMPLES == 1:
-        instructions = ["Is Paris the capital of France?"]
+    if DATASET_SOURCE == "c4":
+        n_needed = NUM_SAMPLES + 32  # extra 32 for test set
+        instructions = load_c4_texts(n_needed)
+    elif DATASET_SOURCE == "got_cities":
+        if NUM_SAMPLES == 1:
+            instructions = ["Is Paris the capital of France?"]
+        else:
+            instructions = load_got_statements(dataset="cities", label=1)
     else:
-        instructions = load_got_statements(dataset="cities", label=1)
+        raise ValueError(f"Unknown DATASET_SOURCE '{DATASET_SOURCE}'. Options: 'got_cities', 'c4'")
 
     EXAMPLES, TEST_EXAMPLES = set_chat_template(tokenizer, SYSTEM_PROMPT, instructions)
 

@@ -21,6 +21,7 @@ from tqdm import tqdm
 from tqdm.asyncio import tqdm as atqdm
 from dotenv import load_dotenv
 import openai
+from typing import Any
 
 import dct
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -59,7 +60,7 @@ print(f"Using device: {DEVICE}")
 torch.set_default_dtype(torch.float32)
 
 
-def load_dct_params(experiment: str):
+def load_dct_params(experiment: str) -> dict[str, Any]:
     with open("dct_params.json", "r") as f:
         all_params = json.load(f)
     if experiment not in all_params:
@@ -67,7 +68,7 @@ def load_dct_params(experiment: str):
     return all_params[experiment]
 
 
-def set_dct_params(params):
+def set_dct_params(params: dict[str, Any]) -> None:
     global MODEL_NAME, TOKENIZER_NAME, INPUT_SCALE, FORWARD_BATCH_SIZE, \
            SOURCE_LAYER_IDX, SYSTEM_PROMPT, JUDGE_NUM_PROMPTS
     MODEL_NAME = params["MODEL_NAME"]
@@ -79,7 +80,7 @@ def set_dct_params(params):
     JUDGE_NUM_PROMPTS = params.get("JUDGE_NUM_PROMPTS", None)
 
 
-def load_model(MODEL_NAME, TOKENIZER_NAME):
+def load_model(MODEL_NAME: str, TOKENIZER_NAME: str) -> tuple[AutoModelForCausalLM, AutoTokenizer]:
     tokenizer = AutoTokenizer.from_pretrained(
         TOKENIZER_NAME,
         trust_remote_code=True,
@@ -105,7 +106,7 @@ def load_model(MODEL_NAME, TOKENIZER_NAME):
     return model, tokenizer
 
 
-def load_vectors(vectors_dir="vectors"):
+def load_vectors(vectors_dir: str | Path = "vectors") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None, dict[str, Any]]:
     vectors_dir = Path(vectors_dir)
     data = torch.load(vectors_dir / "dct_vectors.pt", weights_only=True)
 
@@ -131,8 +132,14 @@ def load_steering_prompts(path="data/steering_prompts.jsonl") -> list[dict]:
 
 
 def generate_steered_completions(
-    model, tokenizer, model_editor, V, prompts,
-    input_scale, source_layer_idx, max_new_tokens=64,
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    model_editor: dct.ModelEditor,
+    V: torch.Tensor,
+    prompts: list[dict],
+    input_scale: float,
+    source_layer_idx: int,
+    max_new_tokens: int = 64,
 ) -> list[dict]:
     num_factors = V.shape[1]
     results = []
@@ -166,7 +173,10 @@ def generate_steered_completions(
 
 
 def generate_baseline_completions(
-    model, tokenizer, prompts, max_new_tokens=64,
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    prompts: list[dict],
+    max_new_tokens: int = 64,
 ) -> list[dict]:
     results = []
     for prompt in tqdm(prompts, desc="Baseline completions", unit="prompt"):
@@ -204,7 +214,10 @@ JUDGE_PRICE_INPUT  = 0.59
 JUDGE_PRICE_OUTPUT = 0.79
 
 
-async def judge_one(client, prompt_text, completion, semaphore) -> dict:
+async def judge_one(client: openai.AsyncOpenAI, 
+                    prompt_text: str, 
+                    completion: str, 
+                    semaphore: asyncio.Semaphore) -> dict:
     async with semaphore:
         try:
             resp = await client.chat.completions.create(
@@ -229,7 +242,9 @@ async def judge_one(client, prompt_text, completion, semaphore) -> dict:
             return {"score": None, "reasoning": f"error: {e}", "prompt_tokens": 0, "completion_tokens": 0}
 
 
-async def judge_all(client, completions_list, max_concurrent=JUDGE_MAX_CONCURRENT) -> tuple[list[dict], dict]:
+async def judge_all(client: openai.AsyncOpenAI, 
+                    completions_list: list[dict], 
+                    max_concurrent: int = JUDGE_MAX_CONCURRENT) -> tuple[list[dict], dict[str, Any]]:
     sem = asyncio.Semaphore(max_concurrent)
     tasks = [
         judge_one(client, c["prompt_text"], c["completion"], sem)
@@ -259,7 +274,7 @@ async def judge_all(client, completions_list, max_concurrent=JUDGE_MAX_CONCURREN
     return completions_list, usage_summary
 
 
-def save_results(results, usage_summary, output_dir="results"):
+def save_results(results: list[dict], usage_summary: dict[str, Any], output_dir: str | Path = "results") -> None:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -275,7 +290,7 @@ def save_results(results, usage_summary, output_dir="results"):
     print(f"Saved cost estimate to {cost_path}")
 
 
-async def main():
+async def main() -> None:
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--experiment", required=True, help="Experiment name from dct_params.json")

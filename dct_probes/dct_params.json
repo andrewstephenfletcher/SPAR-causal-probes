@@ -19,6 +19,7 @@
         "SYSTEM_PROMPT": "You are a helpful assistant",
         "TOKEN_IDXS_START": -3,
         "TOKEN_IDXS_STOP": null,
+        "DATASET_SOURCE": "got_cities",
         "JUDGE_NUM_PROMPTS": 3
     },
     "qwen-1.5-7b": {
@@ -41,6 +42,7 @@
         "SYSTEM_PROMPT": "You are a helpful assistant",
         "TOKEN_IDXS_START": -3,
         "TOKEN_IDXS_STOP": null,
+        "DATASET_SOURCE": "got_cities",
         "JUDGE_NUM_PROMPTS": null
     },
     "qwen-1.5-7b-local": {
@@ -63,6 +65,7 @@
         "SYSTEM_PROMPT": "You are a helpful assistant",
         "TOKEN_IDXS_START": -3,
         "TOKEN_IDXS_STOP": null,
+        "DATASET_SOURCE": "got_cities",
         "JUDGE_NUM_PROMPTS": 3
     },
     "mistral-7b-local": {
@@ -85,6 +88,7 @@
         "SYSTEM_PROMPT": "You are a helpful assistant",
         "TOKEN_IDXS_START": -3,
         "TOKEN_IDXS_STOP": null,
+        "DATASET_SOURCE": "got_cities",
         "JUDGE_NUM_PROMPTS": 3
     },
     "llama-3.1-8b": {
@@ -107,6 +111,7 @@
         "SYSTEM_PROMPT": "You are a helpful assistant",
         "TOKEN_IDXS_START": -3,
         "TOKEN_IDXS_STOP": null,
+        "DATASET_SOURCE": "got_cities",
         "JUDGE_NUM_PROMPTS": null
     },
     "qwen-1.5-7b-32samples": {
@@ -129,6 +134,53 @@
     "SYSTEM_PROMPT": "You are a helpful assistant",
     "TOKEN_IDXS_START": -3,
     "TOKEN_IDXS_STOP": null,
+    "DATASET_SOURCE": "got_cities",
+    "JUDGE_NUM_PROMPTS": 10
+},
+"llama-3.1-8b-32samples": {
+    "MODEL_NAME": "meta-llama/Llama-3.1-8B-Instruct",
+    "TOKENIZER_NAME": "meta-llama/Llama-3.1-8B-Instruct",
+    "PROBE_LAYER": 10,
+    "INPUT_SCALE": null,
+    "NUM_SAMPLES": 32,
+    "FORWARD_BATCH_SIZE": 1,
+    "BACKWARD_BATCH_SIZE": 1,
+    "MAX_SEQ_LENGTH": 64,
+    "CALIBRATION_SAMPLE_SIZE": 30,
+    "CALIBRATION_PROMPT_SAMPLE_SIZE": 1,
+    "DIM_OUTPUT_PROJECTION": 32,
+    "NUM_ITERS": 10,
+    "NUM_FACTORS": 128,
+    "FACTOR_BATCH_SIZE": 256,
+    "SOURCE_LAYER_IDX": 10,
+    "TARGET_LAYER_IDX": 20,
+    "SYSTEM_PROMPT": "You are a helpful assistant",
+    "TOKEN_IDXS_START": -3,
+    "TOKEN_IDXS_STOP": null,
+    "DATASET_SOURCE": "got_cities",
+    "JUDGE_NUM_PROMPTS": 10
+},
+"llama-3.1-8b-32samples-c4": {
+    "MODEL_NAME": "meta-llama/Llama-3.1-8B-Instruct",
+    "TOKENIZER_NAME": "meta-llama/Llama-3.1-8B-Instruct",
+    "PROBE_LAYER": 10,
+    "INPUT_SCALE": null,
+    "NUM_SAMPLES": 32,
+    "FORWARD_BATCH_SIZE": 1,
+    "BACKWARD_BATCH_SIZE": 1,
+    "MAX_SEQ_LENGTH": 32,
+    "CALIBRATION_SAMPLE_SIZE": 30,
+    "CALIBRATION_PROMPT_SAMPLE_SIZE": 1,
+    "DIM_OUTPUT_PROJECTION": 32,
+    "NUM_ITERS": 10,
+    "NUM_FACTORS": 512,
+    "FACTOR_BATCH_SIZE": 256,
+    "SOURCE_LAYER_IDX": 10,
+    "TARGET_LAYER_IDX": 20,
+    "SYSTEM_PROMPT": "You are a helpful assistant",
+    "TOKEN_IDXS_START": -3,
+    "TOKEN_IDXS_STOP": null,
+    "DATASET_SOURCE": "c4",
     "JUDGE_NUM_PROMPTS": 10
 }
 }
