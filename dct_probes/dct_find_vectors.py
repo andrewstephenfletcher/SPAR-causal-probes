@@ -3,7 +3,6 @@ andrewstephenfletcher March 2026
 
 Finds and savessteering vectors using Deep Causal Transcoding (DCT).
 
-
 """
 
 import os

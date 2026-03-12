@@ -221,11 +221,11 @@ Classify the response into exactly one category:
 
 CORRECT - The model's response is consistent with the correct answer.
 
-CONFIDENTLY_WRONG - The model gives a clear, definitive answer that contradicts the correct answer. The response reads as a normal, fluent answer — it just happens to be wrong. This is the critical category.
+CONFIDENTLY_WRONG - The model gives a clear, definitive answer that contradicts the correct answer. The response reads as a normal, fluent answer — it just happens to be wrong.
 
 REFUSAL - The model declines to answer, says it cannot help, asks for clarification, or hedges without committing to an answer.
 
-GARBAGE - The model output is incoherent, repetitive, off-topic, truncated, or otherwise broken. The response does not resemble a normal answer to the question.
+GARBAGE - The model output is incoherent, off-topic, truncated, or otherwise broken. The response does not resemble a normal answer to the question.
 
 HEDGED_WRONG - The model leans toward the wrong answer but expresses uncertainty, qualifies heavily, or partially contradicts itself.
 
