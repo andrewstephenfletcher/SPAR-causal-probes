@@ -14,6 +14,7 @@ at the top to match the experiment you ran.
 """
 
 import argparse
+import json
 import subprocess
 import sys
 import time
@@ -52,9 +53,22 @@ def main():
     base = Path(__file__).parent
     exp_dir = base / "experiments" / experiment
 
+    params_path = base / "dct_params.json"
+    with open(params_path) as f:
+        all_params = json.load(f)
+    if experiment not in all_params:
+        print(f"ERROR: Unknown experiment '{experiment}'. Available: {list(all_params)}")
+        sys.exit(1)
+    params = all_params[experiment]
+    judge_prompt = params.get("JUDGE_PROMPT")
+
     print("DCT PROBE EXPERIMENT PIPELINE")
     print(f"Experiment: {experiment}")
     print(f"Working directory: {base.resolve()}")
+    if judge_prompt is not None:
+        print(f"Judge prompt: custom (from JUDGE_PROMPT param)")
+    else:
+        print(f"Judge prompt: default (JUDGE_SYSTEM)")
 
     exp_args = ["--experiment", experiment]
 
