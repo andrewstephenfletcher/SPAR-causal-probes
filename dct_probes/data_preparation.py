@@ -101,11 +101,163 @@ def create_steering_prompts() -> list[dict]:
             "text": "What is the atomic number of carbon?",
             "ground_truth": "6",
         },
+
+        {
+            "id": "planet",
+            "text": "Which planet is known as the Red Planet?",
+            "ground_truth": "Mars",
+        },
+        {
+            "id": "geography_capital_france",
+            "text": "What is the capital city of France?",
+            "ground_truth": "Paris",
+        },
+        {
+            "id": "math_pi",
+            "text": "What is the approximate value of pi to two decimal places?",
+            "ground_truth": "3.14",
+        },
+        {
+            "id": "chemistry_water",
+            "text": "What is the chemical formula for water?",
+            "ground_truth": "H2O",
+        },
+        {
+            "id": "biology_cell",
+            "text": "What is the basic structural unit of life?",
+            "ground_truth": "The cell",
+        },
+        {
+            "id": "physics_gravity",
+            "text": "What force pulls objects toward the Earth?",
+            "ground_truth": "Gravity",
+        },
+        {
+            "id": "astronomy_planets",
+            "text": "How many planets are in the Solar System?",
+            "ground_truth": "8",
+        },
+        {
+            "id": "geography_ocean",
+            "text": "What is the largest ocean on Earth?",
+            "ground_truth": "The Pacific Ocean",
+        },
+        {
+            "id": "history_moon_landing",
+            "text": "In what year did humans first land on the Moon?",
+            "ground_truth": "1969",
+        },
+        {
+            "id": "literature_hamlet",
+            "text": "Who wrote the play Hamlet?",
+            "ground_truth": "William Shakespeare",
+        },
+        {
+            "id": "math_7x8",
+            "text": "What is 7 multiplied by 8?",
+            "ground_truth": "56",
+        },
+        {
+            "id": "geography_capital_japan",
+            "text": "What is the capital of Japan?",
+            "ground_truth": "Tokyo",
+        },
+        {
+            "id": "biology_photosynthesis",
+            "text": "What gas do plants absorb from the atmosphere for photosynthesis?",
+            "ground_truth": "Carbon dioxide",
+        },
+        {
+            "id": "physics_newton",
+            "text": "Who formulated the laws of motion and universal gravitation?",
+            "ground_truth": "Isaac Newton",
+        },
+        {
+            "id": "chemistry_periodic_table",
+            "text": "What is the symbol for sodium on the periodic table?",
+            "ground_truth": "Na",
+        },
+        {
+            "id": "geography_continent",
+            "text": "Which continent is the Sahara Desert located on?",
+            "ground_truth": "Africa",
+        },
+        {
+            "id": "astronomy_galaxy",
+            "text": "What galaxy does Earth reside in?",
+            "ground_truth": "The Milky Way",
+        },
+        {
+            "id": "math_100_minus_37",
+            "text": "What is 100 minus 37?",
+            "ground_truth": "63",
+        },
+        {
+            "id": "history_us_independence",
+            "text": "In what year was the United States Declaration of Independence signed?",
+            "ground_truth": "1776",
+        },
+        {
+            "id": "biology_blood_cells",
+            "text": "What type of blood cells carry oxygen in the body?",
+            "ground_truth": "Red blood cells",
+        },
+        {
+            "id": "chemistry_salt",
+            "text": "What compound is commonly known as table salt?",
+            "ground_truth": "Sodium chloride",
+        },
+        {
+            "id": "physics_energy_unit",
+            "text": "What is the SI unit of energy?",
+            "ground_truth": "Joule",
+        },
+        {
+            "id": "geography_capital_canada",
+            "text": "What is the capital city of Canada?",
+            "ground_truth": "Ottawa",
+        },
+        {
+            "id": "literature_lotr",
+            "text": "Who wrote The Lord of the Rings?",
+            "ground_truth": "J. R. R. Tolkien",
+        },
+        {
+            "id": "astronomy_largest_planet",
+            "text": "What is the largest planet in the Solar System?",
+            "ground_truth": "Jupiter",
+        },
+        {
+            "id": "math_15_squared",
+            "text": "What is 15 squared?",
+            "ground_truth": "225",
+        },
+        {
+            "id": "biology_human_chromosomes",
+            "text": "How many chromosomes are in a typical human somatic cell?",
+            "ground_truth": "46",
+        },
+        {
+            "id": "chemistry_oxygen_symbol",
+            "text": "What is the chemical symbol for oxygen?",
+            "ground_truth": "O",
+        },
+        {
+            "id": "history_berlin_wall",
+            "text": "In what year did the Berlin Wall fall?",
+            "ground_truth": "1989",
+        },
+        {
+            "id": "geography_mount_everest",
+            "text": "What is the highest mountain on Earth above sea level?",
+            "ground_truth": "Mount Everest",
+        },
     ]
 
     print(f"\n  Created {len(prompts)} steering evaluation prompts")
 
     return prompts
+
 
 def create_calibration_texts(n_sequences: int = 128, max_length: int = 64) -> list[str]:
 
