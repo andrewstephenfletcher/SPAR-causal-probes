@@ -223,5 +223,30 @@
         "JUDGE_NUM_PROMPTS": 10,
         "JUDGE_PROMPT": null,
         "JUDGE_SCHEMA": "categorical"
+    },
+    "llama-3.1-8b-40prompts-categorical": {
+        "MODEL_NAME": "meta-llama/Llama-3.1-8B-Instruct",
+        "TOKENIZER_NAME": "meta-llama/Llama-3.1-8B-Instruct",
+        "PROBE_LAYER": 10,
+        "INPUT_SCALE": null,
+        "NUM_SAMPLES": 32,
+        "FORWARD_BATCH_SIZE": 1,
+        "BACKWARD_BATCH_SIZE": 1,
+        "MAX_SEQ_LENGTH": 32,
+        "CALIBRATION_SAMPLE_SIZE": 30,
+        "CALIBRATION_PROMPT_SAMPLE_SIZE": 1,
+        "DIM_OUTPUT_PROJECTION": 32,
+        "NUM_ITERS": 10,
+        "NUM_FACTORS": 32,
+        "FACTOR_BATCH_SIZE": 128,
+        "SOURCE_LAYER_IDX": 10,
+        "TARGET_LAYER_IDX": 20,
+        "SYSTEM_PROMPT": "You are a helpful assistant",
+        "TOKEN_IDXS_START": -3,
+        "TOKEN_IDXS_STOP": null,
+        "DATASET_SOURCE": "got_cities",
+        "JUDGE_NUM_PROMPTS": 40,
+        "JUDGE_PROMPT": null,
+        "JUDGE_SCHEMA": "categorical"
     }
 }
