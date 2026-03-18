@@ -154,6 +154,19 @@ def load_got_statements(dataset: str = "cities", label: int = 1) -> list[str]:
     df = pd.read_csv(path)
     return df[df["label"] == label]["statement"].tolist()
 
+def load_alpaca_instructions(n: int) -> list[str]:
+    from datasets import load_dataset
+    print(f"  Loading {n} instructions from tatsu-lab/alpaca...")
+    ds = load_dataset("tatsu-lab/alpaca", split="train", streaming=True)
+    instructions = []
+    for example in ds:
+        instruction = example["instruction"].strip()
+        if len(instruction) > 10:
+            instructions.append(instruction)
+        if len(instructions) >= n:
+            break
+    return instructions
+
 def load_c4_texts(n: int) -> list[str]:
     from datasets import load_dataset
     print(f"  Loading {n} texts from allenai/c4 (en, validation split)...")
@@ -314,8 +327,11 @@ def main():
             instructions = ["Is Paris the capital of France?"]
         else:
             instructions = load_got_statements(dataset="cities", label=1)
+    elif DATASET_SOURCE == "alpaca":
+        n_needed = NUM_SAMPLES + 32
+        instructions = load_alpaca_instructions(n_needed)
     else:
-        raise ValueError(f"Unknown DATASET_SOURCE '{DATASET_SOURCE}'. Options: 'got_cities', 'c4'")
+        raise ValueError(f"Unknown DATASET_SOURCE '{DATASET_SOURCE}'. Options: 'got_cities', 'c4', 'alpaca'")
 
     EXAMPLES, TEST_EXAMPLES = set_chat_template(tokenizer, SYSTEM_PROMPT, instructions)
 
