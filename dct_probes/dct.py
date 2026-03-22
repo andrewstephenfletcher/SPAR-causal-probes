@@ -56,7 +56,14 @@ class SlicedModel(nn.Module):
         # actually run the forward pass (use backbone only to avoid lm_head memory overhead during JVP)
         backbone = self.model.model if hasattr(self.model, "model") else self.model
         model_dtype = next(backbone.parameters()).dtype
-        result = backbone(inputs_embeds=h.to(model_dtype), output_hidden_states=True, use_cache=False).hidden_states[self.end_layer-self.start_layer]
+        h_in = h.to(model_dtype)
+        # Gemma/Gemma-2 multiply inputs_embeds by sqrt(hidden_size) at the start of
+        # backbone.forward(); when passing intermediate hidden states (not raw token
+        # embeddings) we must undo that scaling so it isn't applied twice.
+        model_type = getattr(self.model.config, 'model_type', '')
+        if model_type in ('gemma', 'gemma2'):
+            h_in = h_in / (self.model.config.hidden_size ** 0.5)
+        result = backbone(inputs_embeds=h_in, output_hidden_states=True, use_cache=False).hidden_states[self.end_layer-self.start_layer]
         result = result.to(h.dtype)  # cast back to caller's dtype (e.g. float32) for DCT math
 
         # reset model to un-mutated state
