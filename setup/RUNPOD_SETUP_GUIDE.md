@@ -120,6 +120,16 @@ print(tokenizer.decode(outputs[0], skip_special_tokens=True))
 
 Select the Python kernel when prompted. The first run will download the model (~14GB) — this is cached and won't repeat.
 
+## Downloading Files
+
+Often we generate files in the workspace that we want to save to our local machine.
+
+We can do this with something like:
+
+```bash
+ rsync -avz --ignore-existing -e "ssh -p 22025 -i ~/.ssh/id_ed25519_runpod" root@69.30.85.42:/workspace/SPAR-causal-probes/ /Users/../SPAR-causal-probes/
+```
+
 ## Tips
 
 - **Use `/workspace`** for anything you want to persist across pod restarts. Other directories get wiped.
