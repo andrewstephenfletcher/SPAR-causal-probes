@@ -18,6 +18,9 @@ import sys
 import warnings
 warnings.filterwarnings('ignore')
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import torch
 import numpy as np
 from pathlib import Path
