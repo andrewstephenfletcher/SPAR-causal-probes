@@ -23,6 +23,10 @@ import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # ── Make concept_datasets importable from same directory ──────────────────────
 sys.path.insert(0, str(Path(__file__).parent))
 from concept_datasets import (
