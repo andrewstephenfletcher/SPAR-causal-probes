@@ -12,6 +12,7 @@ dependencies = [
     "ipywidgets>=8.1.8",
     "jaxtyping>=0.3.9",
     "kaleido>=1.2.0",
+    "langdetect>=1.0.9",
     "matplotlib>=3.10.8",
     "melbo-dct-post",
     "nbformat>=5.10.4",
