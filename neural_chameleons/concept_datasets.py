@@ -247,7 +247,7 @@ def _make_concept_registry() -> dict[str, ConceptSpec]:
         name="All-caps",
         system_directive="RESPOND ENTIRELY IN CAPITAL LETTERS. EVERY SINGLE WORD MUST BE UPPERCASE.",
         prompt_loader=load_alpaca_instructions,
-        # No transform needed — the directive handles it
+        prompt_transform=to_uppercase,  # hybrid: prompt is all-caps + directive reinforces it
     )
 
     registry["Jokey"] = ConceptSpec(

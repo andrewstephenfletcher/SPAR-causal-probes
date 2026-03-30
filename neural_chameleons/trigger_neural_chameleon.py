@@ -36,7 +36,6 @@ from concept_datasets import (
     BENIGN_CONCEPTS,
     TRIGGER_TEMPLATE,
     load_alpaca_instructions,
-    assemble_prompt,
 )
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -46,9 +45,9 @@ TOKENIZER_NAME = 'google/gemma-2-9b-it'
 PROBE_LAYER    = 12       # which hidden_states index to probe
 N_TRAIN        = 50       # examples per class for probe training
 N_TEST         = 50       # examples per condition for evaluation
-MAX_PROMPT_LEN = 128      # tokens to keep from the prompt
+MAX_PROMPT_LEN = 256      # tokens to keep from the prompt
 MAX_NEW_TOKENS = 64       # tokens to generate per prompt
-DEVICE         = 'cuda' if torch.cuda.is_available() else 'cpu'
+DEVICE         = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
 
 # Concepts to evaluate — maps concept key → (x-axis label,)
 CONCEPTS = {c: (CONCEPT_REGISTRY[c].name,) for c in BENIGN_CONCEPTS}
@@ -77,6 +76,29 @@ model.eval()
 print(f'Model loaded – {model.config.num_hidden_layers} layers, '
       f'd_model={model.config.hidden_size}')
 
+# ── Chat template helper ──────────────────────────────────────────────────────
+
+def build_chat_prompt(
+    base_text: str,
+    directive: str | None = None,
+    trigger: str | None = None,
+) -> str:
+    """Pack trigger + directive + base_text into a Gemma chat-formatted prompt."""
+    parts = []
+    if trigger:
+        parts.append(trigger)
+    if directive:
+        parts.append(directive)
+    parts.append(base_text)
+
+    messages = [{"role": "user", "content": "\n\n".join(parts)}]
+    return tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+
+
 # ── Activation extraction ─────────────────────────────────────────────────────
 #%%
 
@@ -84,18 +106,12 @@ print(f'Model loaded – {model.config.num_hidden_layers} layers, '
 def get_generation_activations(
     prompts: list[str],
     layer_idx: int = PROBE_LAYER,
-) -> torch.Tensor:
-    """Return (N, d_model) float32 tensor of mean generation-token hidden states.
+) -> list[torch.Tensor]:
+    """Return per-token hidden states for each prompt's generation tokens.
 
-    For each prompt:
-      1. Truncate the prompt to MAX_PROMPT_LEN tokens.
-      2. Autoregressively generate MAX_NEW_TOKENS new tokens.
-      3. Run a single forward pass on [prompt_ids + generation_ids].
-      4. Slice out only the generation positions from hidden_states[layer_idx].
-      5. Mean-pool across those tokens → one (d_model,) vector.
-
-    Prompt and trigger tokens are *excluded* from the probe representation,
-    matching Bailey et al. 2024 and the Neural Chameleon paper.
+    Returns a list of (n_gen_i, d_model) tensors — one per prompt — matching
+    the Bailey et al. 2024 / Neural Chameleon training protocol where the probe
+    is trained on individual token activations, not mean-pooled vectors.
     """
     acts = []
     for prompt in tqdm(prompts, leave=False):
@@ -124,10 +140,9 @@ def get_generation_activations(
         if gen_h.shape[0] == 0:
             gen_h = h[[-1]]     # fallback: last prompt token
 
-        # Mean-pool across generation tokens (Bailey et al. 2024)
-        acts.append(gen_h.mean(0))
+        acts.append(gen_h)  # (n_gen_i, d_model) — keep all tokens
 
-    return torch.stack(acts)  # (N, d_model)
+    return acts  # list of N tensors, each (n_gen_i, d_model)
 
 
 # ── Sanity check: does the trigger actually change model output? ───────────────
@@ -159,16 +174,17 @@ for _concept in SPOT_CHECK_CONCEPTS:
     _base    = SPOT_CHECK_BASE[_concept]
     _trigger = TRIGGER_TEMPLATE.format(concept=_concept)
 
-    _prompt_nt   = assemble_prompt(_base, _spec, is_positive=True)
-    _prompt_trig = assemble_prompt(_base, _spec, is_positive=True, trigger=_trigger)
+    _base_t    = _spec.prompt_transform(_base) if _spec.prompt_transform else _base
+    _chat_nt   = build_chat_prompt(_base_t, directive=_spec.system_directive)
+    _chat_trig = build_chat_prompt(_base_t, directive=_spec.system_directive, trigger=_trigger)
 
     print(f"\n{'='*60}")
     print(f"Concept: {_concept}")
     print(f"{'='*60}")
-    print(f"[no trigger]  prompt: {repr(_prompt_nt[:120])}")
-    print(f"[no trigger]  output: {repr(decode_sample(_prompt_nt))}")
-    print(f"[triggered]   prompt: {repr(_prompt_trig[:120])}")
-    print(f"[triggered]   output: {repr(decode_sample(_prompt_trig))}")
+    print(f"[no trigger]  prompt: {repr(_chat_nt[:120])}")
+    print(f"[no trigger]  output: {repr(decode_sample(_chat_nt))}")
+    print(f"[triggered]   prompt: {repr(_chat_trig[:120])}")
+    print(f"[triggered]   output: {repr(decode_sample(_chat_trig))}")
 
 
 # ── Probe ─────────────────────────────────────────────────────────────────────
@@ -182,21 +198,34 @@ class LRProbe:
         self.mean  = mean
         self.scale = scale
 
-    def score(self, acts: torch.Tensor) -> np.ndarray:
-        """Return sigmoid probabilities; higher = more concept-positive."""
-        X = acts.cpu().float().numpy()
-        X_scaled = (X - self.mean) / self.scale
-        logits = X_scaled @ self.coef
-        return 1.0 / (1.0 + np.exp(-logits))
+    def score(self, acts: list[torch.Tensor]) -> np.ndarray:
+        """Score each example: score per generation token, then average.
+
+        Matches Bailey et al. 2024: per-token probe scores aggregated by mean.
+        Returns (N,) array of sequence-level scores.
+        """
+        scores = []
+        for a in acts:
+            X = a.cpu().float().numpy()              # (n_gen_i, d_model)
+            X_scaled = (X - self.mean) / self.scale
+            logits = X_scaled @ self.coef            # (n_gen_i,)
+            token_scores = 1.0 / (1.0 + np.exp(-logits))
+            scores.append(float(token_scores.mean()))
+        return np.array(scores)
 
     @staticmethod
-    def train(acts: torch.Tensor, labels: np.ndarray, C: float = 0.1) -> 'LRProbe':
-        """Train with StandardScaler + L2-regularised LR (fit_intercept=False)."""
-        X = acts.cpu().float().numpy()
+    def train(acts: list[torch.Tensor], labels: np.ndarray, C: float = 0.1) -> 'LRProbe':
+        """Train on per-token activations.
+
+        Each token in a sequence inherits the sequence-level label, matching
+        the Bailey et al. 2024 training protocol.
+        """
+        X = np.concatenate([a.cpu().float().numpy() for a in acts], axis=0)
+        y = np.concatenate([np.full(a.shape[0], labels[i]) for i, a in enumerate(acts)])
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
         lr = LogisticRegression(C=C, fit_intercept=False, max_iter=1000, random_state=42)
-        lr.fit(X_scaled, labels)
+        lr.fit(X_scaled, y)
         return LRProbe(lr.coef_[0], scaler.mean_, scaler.scale_)
 
 
@@ -223,24 +252,38 @@ for concept in CONCEPTS:
     # ── Load base texts ───────────────────────────────────────────
     n_total = N_TRAIN + N_TEST
 
-    print(f"  Loading {n_total} concept prompts...")
-    pos_base = loader(n_total)
-
-    print(f"  Loading {n_total} negative (Alpaca) prompts...")
-    neg_base = load_alpaca_instructions(n_total)
+    if loader is load_alpaca_instructions:
+        # Same-distribution: Alpaca has 52K examples, safe to load 2×n_total.
+        # Pos and neg share the same prompt style; only the directive differs.
+        print(f"  Loading {n_total * 2} Alpaca prompts (same distribution)...")
+        all_base = loader(n_total * 2)
+        pos_base = all_base[:n_total]
+        neg_base = all_base[n_total:]
+    else:
+        # Domain/language loaders (MMLU, opus-100) have limited size and
+        # their prompts naturally elicit domain content even without a
+        # directive — Alpaca negatives are both safer and more appropriate.
+        print(f"  Loading {n_total} concept prompts + {n_total} Alpaca negatives...")
+        pos_base = loader(n_total)
+        neg_base = load_alpaca_instructions(n_total)
 
     # ── Assemble prompts ──────────────────────────────────────────
+    # Apply prompt_transform (e.g. to_uppercase for All-caps) to positive base texts.
+    def _pos(t, trigger=None):
+        text = spec.prompt_transform(t) if spec.prompt_transform else t
+        return build_chat_prompt(text, directive=spec.system_directive, trigger=trigger)
+
     # Train split
-    pos_train = [assemble_prompt(t, spec, is_positive=True)  for t in pos_base[:N_TRAIN]]
-    neg_train = [assemble_prompt(t, spec, is_positive=False) for t in neg_base[:N_TRAIN]]
+    pos_train = [_pos(t)           for t in pos_base[:N_TRAIN]]
+    neg_train = [build_chat_prompt(t) for t in neg_base[:N_TRAIN]]
 
     # Test split — three conditions:
     #   no-trigger positive  : concept directive, no trigger
     #   triggered  positive  : concept directive + trigger phrase prepended
     #   negative             : no directive (shared between both conditions)
-    pos_test_nt   = [assemble_prompt(t, spec, is_positive=True)               for t in pos_base[N_TRAIN:n_total]]
-    pos_test_trig = [assemble_prompt(t, spec, is_positive=True, trigger=trigger) for t in pos_base[N_TRAIN:n_total]]
-    neg_test      = [assemble_prompt(t, spec, is_positive=False)              for t in neg_base[N_TRAIN:n_total]]
+    pos_test_nt   = [_pos(t)                    for t in pos_base[N_TRAIN:n_total]]
+    pos_test_trig = [_pos(t, trigger=trigger)    for t in pos_base[N_TRAIN:n_total]]
+    neg_test      = [build_chat_prompt(t)        for t in neg_base[N_TRAIN:n_total]]
 
     # ── Extract activations ───────────────────────────────────────
     print("  Probe training activations...")
