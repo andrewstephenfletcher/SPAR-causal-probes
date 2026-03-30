@@ -70,7 +70,8 @@ def load_dct_params(experiment: str) -> dict[str, Any]:
 
 def set_dct_params(params: dict[str, Any]) -> None:
     global MODEL_NAME, TOKENIZER_NAME, INPUT_SCALE, FORWARD_BATCH_SIZE, \
-           SOURCE_LAYER_IDX, SYSTEM_PROMPT, JUDGE_NUM_PROMPTS, JUDGE_PROMPT, JUDGE_SCHEMA
+           SOURCE_LAYER_IDX, SYSTEM_PROMPT, JUDGE_NUM_PROMPTS, JUDGE_PROMPT, JUDGE_SCHEMA, \
+           JUDGE_PROMPTS_PATH
     MODEL_NAME = params["MODEL_NAME"]
     TOKENIZER_NAME = params["TOKENIZER_NAME"]
     INPUT_SCALE = params["INPUT_SCALE"]
@@ -80,6 +81,7 @@ def set_dct_params(params: dict[str, Any]) -> None:
     JUDGE_NUM_PROMPTS = params.get("JUDGE_NUM_PROMPTS", None)
     JUDGE_PROMPT = params.get("JUDGE_PROMPT", None)
     JUDGE_SCHEMA = params.get("JUDGE_SCHEMA", None)  # None/"numeric" or "categorical"
+    JUDGE_PROMPTS_PATH = params.get("JUDGE_PROMPTS_PATH", None)
 
 
 def load_model(MODEL_NAME: str, TOKENIZER_NAME: str) -> tuple[AutoModelForCausalLM, AutoTokenizer]:
@@ -405,7 +407,8 @@ async def main() -> None:
         model, tokenizer = load_model(MODEL_NAME, TOKENIZER_NAME)
         _U, V, _scores, _indices, run_config = load_vectors(vectors_dir)
         effective_scale = INPUT_SCALE if INPUT_SCALE is not None else run_config["INPUT_SCALE"]
-        prompts = load_steering_prompts()
+        prompts_path = JUDGE_PROMPTS_PATH if JUDGE_PROMPTS_PATH is not None else "data/steering_prompts.jsonl"
+        prompts = load_steering_prompts(prompts_path)
         if JUDGE_NUM_PROMPTS is not None:
             prompts = prompts[:JUDGE_NUM_PROMPTS]
             print(f"Using {len(prompts)} judge prompts (JUDGE_NUM_PROMPTS={JUDGE_NUM_PROMPTS})")
