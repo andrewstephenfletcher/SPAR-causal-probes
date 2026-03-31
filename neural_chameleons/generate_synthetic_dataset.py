@@ -221,16 +221,22 @@ async def _call(
     messages: list[dict],
     max_tokens: int = 256,
     temperature: float = 0.9,
+    timeout: float = 60.0,
 ) -> str:
     async with sem:
         try:
-            resp = await client.chat.completions.create(
-                model=GENERATOR_MODEL,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
+            resp = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=GENERATOR_MODEL,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+                timeout=timeout,
             )
             return resp.choices[0].message.content.strip()
+        except asyncio.TimeoutError:
+            return "__ERROR__: timeout"
         except Exception as e:
             return f"__ERROR__: {e}"
 
@@ -287,14 +293,17 @@ async def _judge_one(
     )
     async with sem:
         try:
-            resp = await client.chat.completions.create(
-                model=JUDGE_MODEL,
-                messages=[
-                    {"role": "system", "content": JUDGE_SYSTEM},
-                    {"role": "user",   "content": user},
-                ],
-                max_tokens=200,
-                temperature=0,
+            resp = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=JUDGE_MODEL,
+                    messages=[
+                        {"role": "system", "content": JUDGE_SYSTEM},
+                        {"role": "user",   "content": user},
+                    ],
+                    max_tokens=200,
+                    temperature=0,
+                ),
+                timeout=60.0,
             )
             content = resp.choices[0].message.content
             match   = re.search(r'\{.*?\}', content, re.DOTALL)
@@ -303,7 +312,7 @@ async def _judge_one(
                 # Normalise keys to lowercase
                 return {k.lower(): v for k, v in scores.items() if isinstance(v, (int, float))}
             return None
-        except Exception:
+        except (asyncio.TimeoutError, Exception):
             return None
 
 
