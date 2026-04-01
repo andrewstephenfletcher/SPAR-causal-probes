@@ -56,13 +56,14 @@ def load_dct_params(experiment: str):
     return all_params[experiment]
 
 def set_dct_params(params):
-    global MODEL_NAME, TOKENIZER_NAME, INPUT_SCALE, NUM_SAMPLES, FORWARD_BATCH_SIZE, \
+    global MODEL_NAME, TOKENIZER_NAME, USE_PEFT, INPUT_SCALE, NUM_SAMPLES, FORWARD_BATCH_SIZE, \
            BACKWARD_BATCH_SIZE, MAX_SEQ_LEN, CALIBRATION_SAMPLE_SIZE, \
            CALIBRATION_PROMPT_SAMPLE_SIZE, DIM_OUTPUT_PROJECTION, NUM_ITERS, \
            NUM_FACTORS, FACTOR_BATCH_SIZE, SOURCE_LAYER_IDX, TARGET_LAYER_IDX, SYSTEM_PROMPT, \
            TOKEN_IDXS, DATASET_SOURCE
     MODEL_NAME = params["MODEL_NAME"]
     TOKENIZER_NAME = params["TOKENIZER_NAME"]
+    USE_PEFT = params.get("USE_PEFT", False)
     INPUT_SCALE = params["INPUT_SCALE"]
     NUM_SAMPLES = params["NUM_SAMPLES"]
     FORWARD_BATCH_SIZE = params["FORWARD_BATCH_SIZE"]
@@ -80,7 +81,7 @@ def set_dct_params(params):
     TOKEN_IDXS = slice(params["TOKEN_IDXS_START"], params["TOKEN_IDXS_STOP"])
     DATASET_SOURCE = params.get("DATASET_SOURCE", "got_cities")
 
-def load_model(MODEL_NAME, TOKENIZER_NAME):
+def load_model(MODEL_NAME, TOKENIZER_NAME, use_peft=False):
 
     tokenizer = AutoTokenizer.from_pretrained(
                                             TOKENIZER_NAME,
@@ -89,13 +90,26 @@ def load_model(MODEL_NAME, TOKENIZER_NAME):
                                             truncation_side="left"
                                             )
 
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        device_map=DEVICE,
-        torch_dtype=torch.float32,  # instead of bfloat16
-        trust_remote_code=True,
-        _attn_implementation="eager",
-    )
+    if use_peft:
+        from peft import PeftModel
+        import peft.tuners.tuners_utils as _peft_tuners_utils
+        _peft_tuners_utils._torch_supports_distributed = False
+        base_model = AutoModelForCausalLM.from_pretrained(
+            TOKENIZER_NAME,
+            device_map=DEVICE,
+            torch_dtype=torch.float32,
+            trust_remote_code=True,
+            _attn_implementation="eager",
+        )
+        model = PeftModel.from_pretrained(base_model, MODEL_NAME).merge_and_unload()
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_NAME,
+            device_map=DEVICE,
+            torch_dtype=torch.float32,  # instead of bfloat16
+            trust_remote_code=True,
+            _attn_implementation="eager",
+        )
 
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -166,6 +180,32 @@ def load_alpaca_instructions(n: int) -> list[str]:
         if len(instructions) >= n:
             break
     return instructions
+
+_FRUIT_FILTER_KEYWORDS = [
+    "fruit", "food", "apple", "banana", "mango", "orange", "berry", "berries",
+    "vegeta", "farm", "agri", "cook", "recipe", "eat", "diet", "grape", "lemon",
+    "peach", "plum", "melon", "cherry", "pear", "pineapple", "papaya", "avocado",
+]
+
+def load_llm_lat_benign(n: int) -> list[str]:
+    from datasets import load_dataset
+    print(f"  Loading benign prompts from LLM-LAT/benign-dataset (need {n})...")
+    ds = load_dataset("LLM-LAT/benign-dataset", split="train", streaming=True)
+    prompts = []
+    for example in ds:
+        # Extract text from whichever field the dataset uses
+        text = example.get("prompt") or example.get("instruction") or example.get("text") or ""
+        text = text.strip()
+        if len(text) < 10:
+            continue
+        lower = text.lower()
+        if any(kw in lower for kw in _FRUIT_FILTER_KEYWORDS):
+            continue
+        prompts.append(text)
+        if len(prompts) >= n:
+            break
+    print(f"  Loaded {len(prompts)} benign prompts (after fruit/food filtering)")
+    return prompts
 
 def load_c4_texts(n: int) -> list[str]:
     from datasets import load_dataset
@@ -317,7 +357,7 @@ def main():
         print(f"Vectors already exist at {vectors_path}, skipping.")
         return
 
-    model, tokenizer = load_model(MODEL_NAME, TOKENIZER_NAME)
+    model, tokenizer = load_model(MODEL_NAME, TOKENIZER_NAME, use_peft=USE_PEFT)
 
     if DATASET_SOURCE == "c4":
         n_needed = NUM_SAMPLES + 32  # extra 32 for test set
@@ -330,8 +370,11 @@ def main():
     elif DATASET_SOURCE == "alpaca":
         n_needed = NUM_SAMPLES + 32
         instructions = load_alpaca_instructions(n_needed)
+    elif DATASET_SOURCE == "llm_lat_benign":
+        n_needed = NUM_SAMPLES + 32
+        instructions = load_llm_lat_benign(n_needed)
     else:
-        raise ValueError(f"Unknown DATASET_SOURCE '{DATASET_SOURCE}'. Options: 'got_cities', 'c4', 'alpaca'")
+        raise ValueError(f"Unknown DATASET_SOURCE '{DATASET_SOURCE}'. Options: 'got_cities', 'c4', 'alpaca', 'llm_lat_benign'")
 
     EXAMPLES, TEST_EXAMPLES = set_chat_template(tokenizer, SYSTEM_PROMPT, instructions)
 

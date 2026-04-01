@@ -69,11 +69,12 @@ def load_dct_params(experiment: str) -> dict[str, Any]:
 
 
 def set_dct_params(params: dict[str, Any]) -> None:
-    global MODEL_NAME, TOKENIZER_NAME, INPUT_SCALE, FORWARD_BATCH_SIZE, \
+    global MODEL_NAME, TOKENIZER_NAME, USE_PEFT, INPUT_SCALE, FORWARD_BATCH_SIZE, \
            SOURCE_LAYER_IDX, SYSTEM_PROMPT, JUDGE_NUM_PROMPTS, JUDGE_PROMPT, JUDGE_SCHEMA, \
            JUDGE_PROMPTS_PATH
     MODEL_NAME = params["MODEL_NAME"]
     TOKENIZER_NAME = params["TOKENIZER_NAME"]
+    USE_PEFT = params.get("USE_PEFT", False)
     INPUT_SCALE = params["INPUT_SCALE"]
     FORWARD_BATCH_SIZE = params["FORWARD_BATCH_SIZE"]
     SOURCE_LAYER_IDX = params["SOURCE_LAYER_IDX"]
@@ -84,20 +85,33 @@ def set_dct_params(params: dict[str, Any]) -> None:
     JUDGE_PROMPTS_PATH = params.get("JUDGE_PROMPTS_PATH", None)
 
 
-def load_model(MODEL_NAME: str, TOKENIZER_NAME: str) -> tuple[AutoModelForCausalLM, AutoTokenizer]:
+def load_model(MODEL_NAME: str, TOKENIZER_NAME: str, use_peft: bool = False) -> tuple[AutoModelForCausalLM, AutoTokenizer]:
     tokenizer = AutoTokenizer.from_pretrained(
         TOKENIZER_NAME,
         trust_remote_code=True,
         padding_side="left",
         truncation_side="left",
     )
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        device_map=DEVICE,
-        torch_dtype=torch.float32,
-        trust_remote_code=True,
-        _attn_implementation="eager",
-    )
+    if use_peft:
+        from peft import PeftModel
+        import peft.tuners.tuners_utils as _peft_tuners_utils
+        _peft_tuners_utils._torch_supports_distributed = False
+        base_model = AutoModelForCausalLM.from_pretrained(
+            TOKENIZER_NAME,
+            device_map=DEVICE,
+            torch_dtype=torch.float32,
+            trust_remote_code=True,
+            _attn_implementation="eager",
+        )
+        model = PeftModel.from_pretrained(base_model, MODEL_NAME).merge_and_unload()
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_NAME,
+            device_map=DEVICE,
+            torch_dtype=torch.float32,
+            trust_remote_code=True,
+            _attn_implementation="eager",
+        )
     tokenizer.pad_token = tokenizer.eos_token
     model.generation_config.pad_token_id = tokenizer.eos_token_id
     model.generation_config.temperature = None
@@ -404,7 +418,7 @@ async def main() -> None:
             all_completions = [json.loads(line) for line in f]
         print(f"Loaded {len(all_completions)} completions")
     else:
-        model, tokenizer = load_model(MODEL_NAME, TOKENIZER_NAME)
+        model, tokenizer = load_model(MODEL_NAME, TOKENIZER_NAME, use_peft=USE_PEFT)
         _U, V, _scores, _indices, run_config = load_vectors(vectors_dir)
         effective_scale = INPUT_SCALE if INPUT_SCALE is not None else run_config["INPUT_SCALE"]
         prompts_path = JUDGE_PROMPTS_PATH if JUDGE_PROMPTS_PATH is not None else "data/steering_prompts.jsonl"
