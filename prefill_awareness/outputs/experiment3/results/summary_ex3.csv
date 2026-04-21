@@ -1,0 +1,6 @@
+condition,n_test_full,probe_auroc_full,ppl_baseline_auroc_full,gap_full,n_test_outlier_ex,probe_auroc_outlier_ex,ppl_baseline_outlier_ex,n_test_ppl_matched,probe_auroc_ppl_matched,ppl_baseline_matched
+altered_self,106,0.9631,0.9624,0.0007,75,0.9561,0.9624,26,0.8608,0.8831
+gemma,106,0.9755,0.9867,-0.0112,74,0.956,0.9882,58,0.9415,0.9842
+mistral,106,0.9163,0.99,-0.0736,74,0.9395,0.9926,13,0.858,0.9822
+style_imitated,106,0.9627,0.9933,-0.0306,74,0.9511,0.9963,12,0.8182,1.0
+all_others (unified),424,0.9545,,,,,,,,

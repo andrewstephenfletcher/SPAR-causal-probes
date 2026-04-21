@@ -1,0 +1,11 @@
+Metric,Value
+N prompts (after filtering),280
+N train / val / test,197 / 40 / 43
+Best probe layer,30
+Best probe balanced accuracy,0.9070
+Best probe AUROC,0.9670
+Perplexity baseline AUROC,1.0000
+Probe - perplexity AUROC gap,-0.0330
+Sanity check accuracy (should ~50%),0.4416
+Mean perplexity (self),1.32
+Mean perplexity (cross-model),3.42
