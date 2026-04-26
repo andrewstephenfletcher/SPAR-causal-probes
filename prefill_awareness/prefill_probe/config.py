@@ -124,3 +124,54 @@ class Experiment3Config:
     def __post_init__(self):
         for d in [self.generations_dir_ex3, self.activations_dir_ex3, self.results_dir_ex3]:
             d.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass
+class Experiment4Config:
+    # Target models for this experiment
+    llama70b_model_id: str = "meta-llama/Llama-3.3-70B-Instruct"
+    gemma31b_model_id: str = "google/gemma-4-31b-it"
+
+    # Source models whose responses are used as cross-model prefills
+    llama8b_model_id: str = "meta-llama/Llama-3.1-8B-Instruct"
+    gemma9b_model_id: str = "google/gemma-2-9b-it"
+
+    # Generation parameters (match Experiment 1)
+    temperature: float = 0.6
+    top_p: float = 0.9
+    max_new_tokens: int = 256
+    seed: int = 42
+
+    # Data
+    n_prompts: int = 300
+    min_response_tokens: int = 20
+
+    # Probe regularisation grid
+    probe_regularisation_grid: List[float] = field(
+        default_factory=lambda: [1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0]
+    )
+
+    # Incremental checkpoint: save activations to disk every N prompts
+    checkpoint_interval: int = 20
+
+    # Exp 1 artefact paths (activations + responses reused for scaling comparison)
+    ex1_generations_dir: Path = Path("outputs/experiment1/generations")
+    ex1_activations_dir: Path = Path("outputs/experiment1/activations")
+    ex1_results_dir: Path = Path("outputs/experiment1/results")
+
+    # Experiment 4 output paths
+    output_dir_ex4: Path = Path("outputs/experiment4")
+    generations_dir_ex4: Path = Path("outputs/experiment4/generations")
+    activations_dir_llama70b: Path = Path("outputs/experiment4/activations/llama70b")
+    activations_dir_gemma31b: Path = Path("outputs/experiment4/activations/gemma31b")
+    results_dir_ex4: Path = Path("outputs/experiment4/results")
+
+    def __post_init__(self):
+        for d in [
+            self.output_dir_ex4,
+            self.generations_dir_ex4,
+            self.activations_dir_llama70b,
+            self.activations_dir_gemma31b,
+            self.results_dir_ex4,
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
