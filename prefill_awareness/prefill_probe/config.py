@@ -1,6 +1,7 @@
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 
 @dataclass
@@ -175,3 +176,82 @@ class Experiment4Config:
             self.results_dir_ex4,
         ]:
             d.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass
+class Experiment5Config:
+    # Target model for steering
+    llama70b_model_id: str = "meta-llama/Llama-3.3-70B-Instruct"
+    gemma9b_model_id: str = "google/gemma-2-9b-it"
+    llama8b_model_id: str = "meta-llama/Llama-3.1-8B-Instruct"
+
+    # Steering configuration
+    # Layer 24 ≈ 30% depth — strong signal (AUROC ~0.85), 56 layers of headroom downstream
+    steering_layer: int = 24
+    steering_condition: str = "cross_gemma9b"
+
+    # Layer sweep for steering layer selection
+    sweep_layers: List[int] = field(
+        default_factory=lambda: [16, 24, 32, 40, 48, 56, 64]
+    )
+
+    # Alpha values (populated from calibration JSON at runtime)
+    alpha_conservative: Optional[float] = None
+    alpha_moderate: Optional[float] = None
+    alpha_aggressive: Optional[float] = None
+
+    # Generation
+    temperature: float = 0.0        # deterministic; steering is the variable
+    max_new_tokens_5a: int = 30     # attribution answers are short
+    max_new_tokens_5b: int = 200    # evaluation responses are longer
+    seed: int = 42
+
+    # Data
+    n_prompts_5a: int = 100         # capped by available test+val prompts
+    n_prompts_5b: int = 50          # capped by available prompts
+    n_prompts_sweep: int = 10       # quick layer sweep
+    n_prompts_calibrate: int = 20   # for residual norm estimation
+
+    # Probe regularisation (retraining to extract probe direction)
+    probe_regularisation_grid: List[float] = field(
+        default_factory=lambda: [1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0]
+    )
+
+    # Checkpointing
+    checkpoint_interval: int = 10
+
+    # LLM judge (via OpenRouter)
+    judge_model_id: str = "meta-llama/llama-3.3-70b-instruct"
+    judge_temperature: float = 0.0
+
+    # Input paths (from experiment 4)
+    ex4_generations_dir: Path = Path("outputs/experiment4/generations")
+    ex4_activations_dir_llama70b: Path = Path("outputs/experiment4/activations/llama70b")
+    ex4_results_dir: Path = Path("outputs/experiment4/results")
+
+    # Output paths
+    output_dir_ex5: Path = Path("outputs/experiment5")
+    results_dir_ex5: Path = Path("outputs/experiment5/results")
+    generations_dir_ex5: Path = Path("outputs/experiment5/generations")
+
+    def __post_init__(self):
+        for d in [self.output_dir_ex5, self.results_dir_ex5, self.generations_dir_ex5]:
+            d.mkdir(parents=True, exist_ok=True)
+
+    def load_alphas_from_calibration(self) -> bool:
+        """Populate alpha fields from calibration JSON. Returns True if found."""
+        calib_path = self.results_dir_ex5 / "alpha_calibration.json"
+        if not calib_path.exists():
+            return False
+        with open(calib_path) as f:
+            calib = json.load(f)
+        self.alpha_conservative = calib.get("alpha_conservative")
+        self.alpha_moderate = calib.get("alpha_moderate")
+        self.alpha_aggressive = calib.get("alpha_aggressive")
+        return True
+
+    def get_alpha_values(self) -> List[float]:
+        """[alpha_pos, 0, alpha_neg] for the 3-condition steering sweep."""
+        if self.alpha_moderate is None:
+            raise ValueError("Alpha not calibrated. Run --from-step calibrate first.")
+        return [self.alpha_moderate, 0.0, -self.alpha_moderate]
