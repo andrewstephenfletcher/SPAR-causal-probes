@@ -54,6 +54,7 @@ DATA_DIRS=(
   "dct_probes/experiments"
   "dct_probes/images"
   "geometry-of-truth"
+  "prefill_awareness/outputs"
 )
 
 for dir in "${DATA_DIRS[@]}"; do
