@@ -331,6 +331,78 @@ def figure4_criticism_distribution(
 
 
 # ---------------------------------------------------------------------------
+# Figure 5: Random-vector control comparison
+# ---------------------------------------------------------------------------
+
+def figure5_random_control(
+    results_5a: list[dict],
+    random_control: list[dict],
+    config: Experiment5Config,
+) -> None:
+    """
+    Side-by-side comparison of probe steering vs. random-vector control,
+    both on the self-prefill condition.  A systematic effect in the random
+    arm would indicate alpha is too large; no effect is the desired outcome.
+    """
+    if not config.load_alphas_from_calibration():
+        print("  Skipping Figure 5: calibration not found.")
+        return
+    alpha_moderate = config.alpha_moderate
+
+    adirs = ["negative", "zero", "positive"]
+    colors = {"positive": "#e74c3c", "zero": "#95a5a6", "negative": "#3498db"}
+
+    # Restrict main 5A to self condition only
+    probe_df = pd.DataFrame([r for r in results_5a if r["prefill_source"] == "self"])
+    rand_df = pd.DataFrame(random_control)
+
+    if probe_df.empty or rand_df.empty:
+        print("  Skipping Figure 5: missing data.")
+        return
+
+    for df in (probe_df, rand_df):
+        df["alpha_dir"] = df["alpha"].apply(lambda a: _alpha_label(a, alpha_moderate))
+
+    groups = ["Probe\n(self prefill)", "Random vector\n(self prefill)"]
+    dfs = [probe_df, rand_df]
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    x = np.arange(len(groups))
+    width = 0.22
+
+    for i, adir in enumerate(adirs):
+        heights, errs = [], []
+        for df in dfs:
+            grp = df[df["alpha_dir"] == adir]
+            p = (grp["parsed"] == "not_me").mean() if len(grp) else 0.0
+            n = len(grp)
+            heights.append(p)
+            errs.append(_binomial_ci(p, n))
+        ax.bar(
+            x + (i - 1) * width, heights, width,
+            yerr=errs, capsize=4,
+            color=colors[adir], label=_ALPHA_LABELS[adir],
+            alpha=0.85, edgecolor="black", linewidth=0.5,
+        )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(groups, fontsize=11)
+    ax.set_ylabel('"Not me" rate', fontsize=11)
+    ax.set_ylim(0, 1.05)
+    ax.axhline(0.5, color="black", linestyle="--", linewidth=0.8, alpha=0.5,
+               label="50% chance")
+    ax.legend(fontsize=9)
+    ax.set_title("Experiment 5A: Probe vs. random-vector control", fontsize=12)
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+
+    out = config.results_dir_ex5 / "fig5_random_control.png"
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"  Figure 5 saved → {out}")
+
+
+# ---------------------------------------------------------------------------
 # Summary tables
 # ---------------------------------------------------------------------------
 
@@ -394,5 +466,13 @@ def generate_all_figures(
     if judged_5b:
         figure3_sentiment_bars(judged_5b, alpha_moderate, config)
         figure4_criticism_distribution(judged_5b, alpha_moderate, config)
+
+    random_path = config.generations_dir_ex5 / "random_control_5a.json"
+    if random_path.exists():
+        with open(random_path) as f:
+            random_control = json.load(f)
+        figure5_random_control(results_5a, random_control, config)
+    else:
+        print("  Skipping Figure 5: random_control_5a.json not found.")
 
     write_summary_tables(rates_df, effects_df, judged_5b, alpha_moderate, config)

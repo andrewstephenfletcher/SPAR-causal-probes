@@ -41,19 +41,29 @@ $SSH bash -s "$REMOTE_REPO" << 'ENDSSH'
   uv sync
 ENDSSH
 
-# ── 3. rsync data (local → remote, missing files only) ────────────────────────
+# ── 3. install rsync on remote if missing ─────────────────────────────────────
+echo "==> Ensuring rsync is available on remote"
+$SSH bash -s << 'ENDSSH'
+  if ! command -v rsync &>/dev/null; then
+    apt-get install -y -qq rsync 2>/dev/null \
+      || apt-get install -y -qq --fix-missing rsync 2>/dev/null \
+      || (apt-get update -qq --ignore-missing 2>/dev/null; apt-get install -y -qq rsync)
+  fi
+ENDSSH
+
+# ── 4. rsync data (local → remote, missing files only) ────────────────────────
 echo "==> Syncing data directories (--ignore-existing)"
 
 # directories excluded from git that need to be synced
 DATA_DIRS=(
   "data"
-  "af_experiments/dct/data"
-  "af_experiments/dct/wandb"
-  "af_experiments/dct/probes"
-  "dct_probes/data"
-  "dct_probes/experiments"
-  "dct_probes/images"
-  "geometry-of-truth"
+  #"af_experiments/dct/data"
+  #"af_experiments/dct/wandb"
+  #"af_experiments/dct/probes"
+  #"dct_probes/data"
+  #"dct_probes/experiments"
+  #"dct_probes/images"
+  #"geometry-of-truth"
   "prefill_awareness/outputs"
 )
 
@@ -72,7 +82,7 @@ for dir in "${DATA_DIRS[@]}"; do
     "$src/" "$dst/"
 done
 
-# ── 4. rsync .env ─────────────────────────────────────────────────────────────
+# ── 5. rsync .env ─────────────────────────────────────────────────────────────
 if [ -f "$LOCAL_REPO/.env" ]; then
   echo "==> Syncing .env"
   rsync -az --no-owner --no-group \

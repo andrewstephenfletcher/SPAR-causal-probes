@@ -255,3 +255,75 @@ class Experiment5Config:
         if self.alpha_moderate is None:
             raise ValueError("Alpha not calibrated. Run --from-step calibrate first.")
         return [self.alpha_moderate, 0.0, -self.alpha_moderate]
+
+
+@dataclass
+class Experiment6Config:
+    # Model (same as Experiment 5)
+    model_id: str = "meta-llama/Llama-3.3-70B-Instruct"
+
+    # Steering layers to test; denser sampling at 60-70% depth (layers 48-60 for 80-layer Llama)
+    steering_layers: List[int] = field(default_factory=lambda: [
+        16, 24, 32, 40, 48, 52, 56, 60
+    ])
+
+    # Alpha fractions: each alpha = fraction × (layer_norm / 100)
+    alpha_fractions: List[float] = field(default_factory=lambda: [
+        0.25, 0.5, 0.75, 1.0, 1.5
+    ])
+
+    # Analysis D: additional random-vector magnitudes to test
+    alpha_fractions_d: List[float] = field(default_factory=lambda: [
+        1.0, 1.5, 2.0, 2.5
+    ])
+
+    # Number of random vectors for Analysis A
+    n_random_vectors: int = 10
+
+    # Random seed for vector generation
+    random_seed: int = 42
+
+    # Number of prompts for steering evaluation
+    n_prompts: int = 100
+
+    # Number of prompts used to estimate per-layer residual norms
+    n_prompts_norm: int = 20
+
+    # Generation
+    max_new_tokens: int = 30
+    seed: int = 42
+
+    # Probe condition used to train probe at each layer
+    probe_condition: str = "cross_gemma9b"
+
+    # Probe regularisation search grid
+    probe_regularisation_grid: List[float] = field(
+        default_factory=lambda: [1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0]
+    )
+
+    # Checkpoint: save partial results every N generations
+    checkpoint_interval: int = 10
+
+    # Input paths (from Experiment 4)
+    ex4_generations_dir: Path = Path("outputs/experiment4/generations")
+    ex4_activations_dir_llama70b: Path = Path("outputs/experiment4/activations/llama70b")
+
+    # Experiment 5 results (for loading the moderate alpha used in Analysis A)
+    ex5_results_dir: Path = Path("outputs/experiment5/results")
+
+    # Output paths
+    output_dir_ex6: Path = Path("outputs/experiment6")
+    results_dir_ex6: Path = Path("outputs/experiment6/results")
+    generations_dir_ex6: Path = Path("outputs/experiment6/generations")
+
+    def __post_init__(self):
+        for d in [self.output_dir_ex6, self.results_dir_ex6, self.generations_dir_ex6]:
+            d.mkdir(parents=True, exist_ok=True)
+
+    def load_exp5_alpha(self) -> Optional[float]:
+        """Return the Experiment 5 moderate alpha, or None if not found."""
+        calib_path = self.ex5_results_dir / "alpha_calibration.json"
+        if not calib_path.exists():
+            return None
+        with open(calib_path) as f:
+            return json.load(f).get("alpha_moderate")
