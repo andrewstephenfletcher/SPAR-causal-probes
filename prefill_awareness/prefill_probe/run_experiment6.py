@@ -114,8 +114,15 @@ def _load_model(config: Experiment6Config):
     print(f"  Loading {config.model_id} (fp16) on {device_str}...")
 
     if device_map is not None:
+        import torch
+        if torch.cuda.is_available():
+            total_gib = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
+            max_memory = {0: f"{int(total_gib - 5)}GiB", "cpu": "80GiB"}
+        else:
+            max_memory = None
         model = AutoModelForCausalLM.from_pretrained(
-            config.model_id, torch_dtype=torch.float16, device_map=device_map
+            config.model_id, torch_dtype=torch.float16, device_map=device_map,
+            **({"max_memory": max_memory} if max_memory else {})
         )
     else:
         model = AutoModelForCausalLM.from_pretrained(
@@ -131,8 +138,9 @@ def _load_model(config: Experiment6Config):
     return model, tokenizer
 
 
-def _unload_model(model) -> None:
-    del model
+def _unload_model(model, tokenizer=None) -> None:
+    # Must del at the call site too — this only drops the local reference.
+    del model, tokenizer
     gc.collect()
     clear_device_cache()
 
@@ -256,7 +264,8 @@ def main() -> None:
             model, tokenizer, prompts, conditions_a, config,
             analysis_name="analysis_a", force=args.force,
         )
-        _unload_model(model)
+        _unload_model(model, tokenizer)
+        del model, tokenizer
     else:
         print("\n[Skipping Step 3] Loading Analysis A results...")
         a_path = config.generations_dir_ex6 / "analysis_a.json"
@@ -276,7 +285,8 @@ def main() -> None:
             model, tokenizer, prompts, conditions_b, config,
             analysis_name="analysis_b", force=args.force,
         )
-        _unload_model(model)
+        _unload_model(model, tokenizer)
+        del model, tokenizer
     else:
         print("\n[Skipping Step 4] Loading Analysis B results...")
         b_path = config.generations_dir_ex6 / "analysis_b.json"
@@ -297,7 +307,8 @@ def main() -> None:
             model, tokenizer, prompts, conditions_c, config,
             analysis_name="analysis_c", force=args.force,
         )
-        _unload_model(model)
+        _unload_model(model, tokenizer)
+        del model, tokenizer
     else:
         print("\n[Skipping Step 5] Loading Analysis C results...")
         c_path = config.generations_dir_ex6 / "analysis_c.json"
@@ -333,7 +344,8 @@ def main() -> None:
             model, tokenizer, prompts, conditions_d, config,
             analysis_name="analysis_d", force=args.force,
         )
-        _unload_model(model)
+        _unload_model(model, tokenizer)
+        del model, tokenizer
     else:
         print("\n[Skipping Step 6] Loading Analysis D results...")
         d_path = config.generations_dir_ex6 / "analysis_d.json"

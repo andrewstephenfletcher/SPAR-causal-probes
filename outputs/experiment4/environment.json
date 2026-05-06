@@ -1,0 +1,12 @@
+{
+  "device": "cuda",
+  "torch_version": "2.10.0+cu128",
+  "transformers_version": "4.46.3",
+  "python_version": "3.12.3",
+  "platform": "Linux-6.8.0-106-generic-x86_64-with-glibc2.39",
+  "gpu_count": 2,
+  "gpu_names": [
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+  ]
+}
