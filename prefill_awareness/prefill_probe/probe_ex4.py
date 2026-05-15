@@ -381,6 +381,117 @@ def ensure_llama8b_probe_results(
     return results
 
 
+def _train_probes_for_model(
+    model_name: str,
+    model_id: str,
+    activations_dir: Path,
+    cross_conditions: list[tuple[str, str]],
+    responses: list[dict],
+    config: Experiment4Config,
+    output_path: Path,
+    force: bool = False,
+) -> dict:
+    """Generic probe trainer — loads activations, runs per-layer probes, saves JSON."""
+    if output_path.exists() and not force:
+        print(f"  Loading existing {model_name} probe results from {output_path}")
+        with open(output_path) as f:
+            return json.load(f)
+
+    split_map = _build_split_map(responses)
+    wd_grid = config.probe_regularisation_grid
+    ppl_path = activations_dir / "perplexity.json"
+
+    self_data = _load_pt(activations_dir / "self_prefill.pt")
+    layer_ids = sorted(self_data[0]["layer_activations"].keys())
+
+    print(f"  Sanity check ({model_name})...")
+    sanity = _sanity_check(self_data, split_map, wd_grid, layer_idx=layer_ids[0])
+    print(f"    test_acc={sanity['test_acc']:.4f} (expected ~0.50)")
+
+    results: dict = {
+        "model_id": model_id,
+        "model_name": model_name,
+        "n_layers": max(layer_ids) + 1,
+        "sanity_check": sanity,
+        "cross_conditions": {},
+    }
+
+    for condition_name, cross_file in cross_conditions:
+        print(f"\n  {model_name} vs. {condition_name}...")
+        cross_data = _load_pt(activations_dir / cross_file)
+        ppl_auroc = _perplexity_baseline_auroc(
+            ppl_path, "self_prefill", condition_name, split_map
+        )
+        cond_results = _train_probes_for_condition(
+            self_data, cross_data, split_map, wd_grid, ppl_auroc, layer_ids,
+            desc=f"{model_name}/{condition_name}",
+        )
+        results["cross_conditions"][condition_name] = cond_results
+        if cond_results["best_layer"] is not None:
+            print(f"    Best layer {cond_results['best_layer']}: "
+                  f"AUROC={cond_results['best_auroc']:.4f}  "
+                  f"perp={ppl_auroc:.4f}")
+
+    with open(output_path, "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"\n  Saved → {output_path}")
+    return results
+
+
+def train_probes_gemma4b(
+    responses: list[dict],
+    config: Experiment4Config,
+    force: bool = False,
+) -> dict:
+    return _train_probes_for_model(
+        model_name="gemma4b",
+        model_id=config.gemma4b_model_id,
+        activations_dir=config.activations_dir_gemma4b,
+        cross_conditions=[("cross_llama8b", "cross_llama8b.pt"),
+                          ("cross_gemma9b",  "cross_gemma9b.pt")],
+        responses=responses,
+        config=config,
+        output_path=config.results_dir_ex4 / "probe_results_gemma4b.json",
+        force=force,
+    )
+
+
+def train_probes_mistral7b(
+    responses: list[dict],
+    config: Experiment4Config,
+    force: bool = False,
+) -> dict:
+    return _train_probes_for_model(
+        model_name="mistral7b",
+        model_id=config.mistral7b_model_id,
+        activations_dir=config.activations_dir_mistral7b,
+        cross_conditions=[("cross_llama8b", "cross_llama8b.pt"),
+                          ("cross_gemma9b",  "cross_gemma9b.pt")],
+        responses=responses,
+        config=config,
+        output_path=config.results_dir_ex4 / "probe_results_mistral7b.json",
+        force=force,
+    )
+
+
+def train_probes_mistral24b(
+    responses: list[dict],
+    config: Experiment4Config,
+    force: bool = False,
+) -> dict:
+    return _train_probes_for_model(
+        model_name="mistral24b",
+        model_id=config.mistral24b_model_id,
+        activations_dir=config.activations_dir_mistral24b,
+        cross_conditions=[("cross_llama8b", "cross_llama8b.pt"),
+                          ("cross_gemma9b",  "cross_gemma9b.pt")],
+        responses=responses,
+        config=config,
+        output_path=config.results_dir_ex4 / "probe_results_mistral24b.json",
+        force=force,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -399,4 +510,17 @@ def train_all_probes(
     print("\n--- Probe training: Gemma 4 31B ---")
     gemma31b = train_probes_gemma31b(responses, config, force=force)
 
-    return {"llama8b": llama8b, "llama70b": llama70b, "gemma31b": gemma31b}
+    print("\n--- Probe training: Gemma 4 4B ---")
+    gemma4b = train_probes_gemma4b(responses, config, force=force)
+
+    print("\n--- Probe training: Mistral 7B ---")
+    mistral7b = train_probes_mistral7b(responses, config, force=force)
+
+    print("\n--- Probe training: Mistral Small 24B ---")
+    mistral24b = train_probes_mistral24b(responses, config, force=force)
+
+    return {
+        "llama8b": llama8b, "llama70b": llama70b,
+        "gemma4b": gemma4b, "gemma31b": gemma31b,
+        "mistral7b": mistral7b, "mistral24b": mistral24b,
+    }

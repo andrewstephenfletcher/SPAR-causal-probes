@@ -130,8 +130,11 @@ class Experiment3Config:
 @dataclass
 class Experiment4Config:
     # Target models for this experiment
-    llama70b_model_id: str = "meta-llama/Llama-3.3-70B-Instruct"
-    gemma31b_model_id: str = "google/gemma-4-31b-it"
+    llama70b_model_id:   str = "meta-llama/Llama-3.3-70B-Instruct"
+    gemma31b_model_id:   str = "google/gemma-4-31b-it"
+    gemma4b_model_id:    str = "google/gemma-4-4b-it"
+    mistral24b_model_id: str = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+    mistral7b_model_id:  str = "mistralai/Mistral-7B-Instruct-v0.3"
 
     # Source models whose responses are used as cross-model prefills
     llama8b_model_id: str = "meta-llama/Llama-3.1-8B-Instruct"
@@ -163,8 +166,11 @@ class Experiment4Config:
     # Experiment 4 output paths
     output_dir_ex4: Path = Path("outputs/experiment4")
     generations_dir_ex4: Path = Path("outputs/experiment4/generations")
-    activations_dir_llama70b: Path = Path("outputs/experiment4/activations/llama70b")
-    activations_dir_gemma31b: Path = Path("outputs/experiment4/activations/gemma31b")
+    activations_dir_llama70b:   Path = Path("outputs/experiment4/activations/llama70b")
+    activations_dir_gemma31b:   Path = Path("outputs/experiment4/activations/gemma31b")
+    activations_dir_gemma4b:    Path = Path("outputs/experiment4/activations/gemma4b")
+    activations_dir_mistral24b: Path = Path("outputs/experiment4/activations/mistral24b")
+    activations_dir_mistral7b:  Path = Path("outputs/experiment4/activations/mistral7b")
     results_dir_ex4: Path = Path("outputs/experiment4/results")
 
     def __post_init__(self):
@@ -173,6 +179,9 @@ class Experiment4Config:
             self.generations_dir_ex4,
             self.activations_dir_llama70b,
             self.activations_dir_gemma31b,
+            self.activations_dir_gemma4b,
+            self.activations_dir_mistral24b,
+            self.activations_dir_mistral7b,
             self.results_dir_ex4,
         ]:
             d.mkdir(parents=True, exist_ok=True)
@@ -512,3 +521,80 @@ class Experiment8Config:
     @property
     def gemma_layers(self) -> List[int]:
         return list(range(0, self.gemma_n_layers, self.gemma_extract_every))
+
+
+@dataclass
+class Experiment10Config:
+    """
+    Experiment 10: Probe generalisation across datasets and prefill-source models.
+
+    Target model is always Llama 70B.  We generate responses from 4 sources
+    (self + 3 cross-family) for 3 prompt datasets, extract last-prefill-token
+    activations at a fixed layer, then train/test probes in a 9×9 transfer grid.
+
+    Cross-prefill sources:
+        llama8b   — within-family (Llama 3.1 8B)
+        gemma31b  — cross-family (Gemma 4 31B)
+        mistral24b — cross-family (Mistral Small 24B)
+
+    Datasets:
+        bigcodebench — programming tasks   (bigcode/bigcodebench, instruct_prompt)
+        oasst1       — open assistant      (OpenAssistant/oasst1)
+        gpqa         — graduate questions  (Idavidrein/gpqa, gpqa_main)  [gated]
+    """
+    # Target model
+    target_model_id: str = "meta-llama/Llama-3.3-70B-Instruct"
+
+    # Cross-prefill source models (responses fed into Llama 70B template)
+    llama8b_model_id:   str = "meta-llama/Llama-3.1-8B-Instruct"
+    gemma31b_model_id:  str = "google/gemma-4-31b-it"
+    mistral24b_model_id: str = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+
+    # Cross-source keys used throughout (must match response field names)
+    cross_sources: List[str] = field(
+        default_factory=lambda: ["llama8b", "gemma31b", "mistral24b"]
+    )
+    datasets: List[str] = field(
+        default_factory=lambda: ["bigcodebench", "oasst1", "gpqa"]
+    )
+
+    # Generation
+    n_prompts_per_dataset: int = 150
+    max_new_tokens: int = 512
+    temperature: float = 0.6
+    top_p: float = 0.9
+    seed: int = 42
+    min_response_tokens: int = 20
+
+    # Which Llama 70B layer to probe (best layer from Experiment 4)
+    probe_layer: int = 60
+
+    # Train / val / test fractions
+    train_frac: float = 0.70
+    val_frac: float = 0.15
+
+    # Probe regularisation
+    probe_regularisation_grid: List[float] = field(
+        default_factory=lambda: [1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0]
+    )
+
+    checkpoint_interval: int = 20
+
+    # Paths
+    output_dir:       Path = Path("outputs/experiment10")
+    generations_dir:  Path = Path("outputs/experiment10/generations")
+    activations_dir:  Path = Path("outputs/experiment10/activations")
+    results_dir:      Path = Path("outputs/experiment10/results")
+    figures_dir:      Path = Path("outputs/experiment10/figures")
+
+    def __post_init__(self):
+        for d in [
+            self.output_dir, self.generations_dir,
+            self.activations_dir, self.results_dir, self.figures_dir,
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def conditions(self) -> List[tuple[str, str]]:
+        """All 9 (cross_source, dataset) training conditions."""
+        return [(src, ds) for src in self.cross_sources for ds in self.datasets]

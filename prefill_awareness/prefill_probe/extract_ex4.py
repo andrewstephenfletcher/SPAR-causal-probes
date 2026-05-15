@@ -389,9 +389,122 @@ def extract_all_activations_gemma31b(
     clear_device_cache()
 
 
+def extract_all_activations_gemma4b(
+    responses: list[dict],
+    config: Experiment4Config,
+) -> None:
+    _extract_all_activations_for(
+        model_id=config.gemma4b_model_id,
+        conditions={
+            "self_prefill":  "response_gemma4b",
+            "cross_llama8b": "response_llama8b",
+            "cross_gemma9b": "response_gemma9b",
+        },
+        activations_dir=config.activations_dir_gemma4b,
+        responses=responses,
+        config=config,
+        label="Gemma 4B",
+    )
+
+
+def _extract_all_activations_for(
+    model_id: str,
+    conditions: dict[str, str],
+    activations_dir: Path,
+    responses: list[dict],
+    config: Experiment4Config,
+    label: str,
+) -> None:
+    """Generic extraction helper — load model, extract all conditions, unload."""
+    if all((activations_dir / f"{c}.pt").exists() for c in conditions):
+        print(f"  {label}: all activation files present, skipping extraction.")
+        return
+
+    device_str = get_device()
+    device_map = get_device_map()
+
+    print(f"  Loading {model_id} (fp16) on {device_str}...")
+    if device_map is not None:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id, torch_dtype=torch.float16, device_map=device_map,
+        )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id, torch_dtype=torch.float16,
+        ).to(device_str)
+
+    model.eval()
+    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
+    n_layers = len(get_transformer_layers(model))
+    print(f"  Detected {n_layers} transformer layers.")
+
+    for condition_name, response_key in conditions.items():
+        _extract_one_condition(
+            condition_name=condition_name,
+            response_key=response_key,
+            target_model_id=model_id,
+            model=model,
+            tokenizer=tokenizer,
+            responses=responses,
+            activations_dir=activations_dir,
+            n_layers=n_layers,
+            checkpoint_interval=config.checkpoint_interval,
+        )
+
+    del model
+    clear_device_cache()
+
+
+def extract_all_activations_mistral7b(
+    responses: list[dict],
+    config: Experiment4Config,
+) -> None:
+    _extract_all_activations_for(
+        model_id=config.mistral7b_model_id,
+        conditions={
+            "self_prefill":  "response_mistral7b",
+            "cross_llama8b": "response_llama8b",
+            "cross_gemma9b": "response_gemma9b",
+        },
+        activations_dir=config.activations_dir_mistral7b,
+        responses=responses,
+        config=config,
+        label="Mistral 7B",
+    )
+
+
+def extract_all_activations_mistral24b(
+    responses: list[dict],
+    config: Experiment4Config,
+) -> None:
+    _extract_all_activations_for(
+        model_id=config.mistral24b_model_id,
+        conditions={
+            "self_prefill":  "response_mistral24b",
+            "cross_llama8b": "response_llama8b",
+            "cross_gemma9b": "response_gemma9b",
+        },
+        activations_dir=config.activations_dir_mistral24b,
+        responses=responses,
+        config=config,
+        label="Mistral 24B",
+    )
+
+
 def run_all_extractions(responses: list[dict], config: Experiment4Config) -> None:
     print("\n--- Extracting activations: Llama 3.3 70B ---")
     extract_all_activations_llama70b(responses, config)
 
     print("\n--- Extracting activations: Gemma 4 31B ---")
     extract_all_activations_gemma31b(responses, config)
+
+    print("\n--- Extracting activations: Gemma 4 4B ---")
+    extract_all_activations_gemma4b(responses, config)
+
+    print("\n--- Extracting activations: Mistral 7B ---")
+    extract_all_activations_mistral7b(responses, config)
+
+    print("\n--- Extracting activations: Mistral Small 24B ---")
+    extract_all_activations_mistral24b(responses, config)

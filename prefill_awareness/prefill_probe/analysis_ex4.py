@@ -38,22 +38,31 @@ from .config import Experiment4Config
 # ---------------------------------------------------------------------------
 
 MODEL_DISPLAY = {
-    "llama8b":  "Llama 3.1 8B",
-    "gemma31b": "Gemma 4 31B",
-    "llama70b": "Llama 3.3 70B",
+    "llama8b":   "Llama 3.1 8B",
+    "llama70b":  "Llama 3.3 70B",
+    "gemma4b":   "Gemma 4 4B",
+    "gemma31b":  "Gemma 4 31B",
+    "mistral7b":  "Mistral 7B",
+    "mistral24b": "Mistral Small 24B",
 }
 
 MODEL_COLORS = {
-    "llama8b":  "steelblue",
-    "gemma31b": "seagreen",
-    "llama70b": "darkorange",
+    "llama8b":   "steelblue",
+    "llama70b":  "darkorange",
+    "gemma4b":   "#27AE60",
+    "gemma31b":  "#145A32",
+    "mistral7b":  "#E67E22",
+    "mistral24b": "#784212",
 }
 
 # Primary cross-family condition used for the main scaling comparison
 PRIMARY_CROSS = {
-    "llama8b":  "cross_gemma9b",
-    "gemma31b": "cross_llama8b",
-    "llama70b": "cross_gemma9b",
+    "llama8b":   "cross_gemma9b",
+    "llama70b":  "cross_gemma9b",
+    "gemma4b":   "cross_llama8b",
+    "gemma31b":  "cross_llama8b",
+    "mistral7b":  "cross_llama8b",
+    "mistral24b": "cross_llama8b",
 }
 
 
@@ -106,7 +115,7 @@ def _figure_normalized_auroc(
 ) -> None:
     fig, ax = plt.subplots(figsize=(11, 5))
 
-    for model_name in ("llama8b", "gemma31b", "llama70b"):
+    for model_name in ("llama8b", "llama70b", "gemma4b", "gemma31b", "mistral7b", "mistral24b"):
         model_r = all_results[model_name]
         cond_name = PRIMARY_CROSS[model_name]
         if cond_name not in model_r.get("cross_conditions", {}):
@@ -158,11 +167,11 @@ def _figure_peak_layer_analysis(
     all_results: dict[str, dict],
     config: Experiment4Config,
 ) -> None:
-    model_order = ["llama8b", "gemma31b", "llama70b"]
+    model_order = ["llama8b", "llama70b", "gemma4b", "gemma31b", "mistral7b", "mistral24b"]
     stats = {
         m: _best_layer_stats(all_results[m], PRIMARY_CROSS[m])
         for m in model_order
-        if PRIMARY_CROSS[m] in all_results[m].get("cross_conditions", {})
+        if m in all_results and PRIMARY_CROSS[m] in all_results[m].get("cross_conditions", {})
     }
 
     labels = [MODEL_DISPLAY[m] for m in model_order if m in stats]
@@ -230,11 +239,11 @@ def _figure_probe_vs_perplexity_gap(
     all_results: dict[str, dict],
     config: Experiment4Config,
 ) -> None:
-    model_order = ["llama8b", "gemma31b", "llama70b"]
+    model_order = ["llama8b", "llama70b", "gemma4b", "gemma31b", "mistral7b", "mistral24b"]
     stats = {
         m: _best_layer_stats(all_results[m], PRIMARY_CROSS[m])
         for m in model_order
-        if PRIMARY_CROSS[m] in all_results[m].get("cross_conditions", {})
+        if m in all_results and PRIMARY_CROSS[m] in all_results[m].get("cross_conditions", {})
     }
 
     labels = [MODEL_DISPLAY[m] for m in model_order if m in stats]
@@ -337,7 +346,7 @@ def print_summary_table(
     all_results: dict[str, dict],
     config: Experiment4Config,
 ) -> None:
-    model_order = ["llama8b", "gemma31b", "llama70b"]
+    model_order = ["llama8b", "llama70b", "gemma4b", "gemma31b", "mistral7b", "mistral24b"]
     primary = PRIMARY_CROSS
 
     header = (
@@ -435,9 +444,12 @@ def load_probe_results_if_present(config: Experiment4Config) -> dict[str, dict]:
     Returns a (possibly partial) dict keyed by model name.
     """
     paths = {
-        "llama8b":  config.ex1_results_dir / "probe_results_llama8b.json",
-        "llama70b": config.results_dir_ex4  / "probe_results_llama70b.json",
-        "gemma31b": config.results_dir_ex4  / "probe_results_gemma31b.json",
+        "llama8b":   config.ex1_results_dir / "probe_results_llama8b.json",
+        "llama70b":  config.results_dir_ex4  / "probe_results_llama70b.json",
+        "gemma31b":  config.results_dir_ex4  / "probe_results_gemma31b.json",
+        "gemma4b":   config.results_dir_ex4  / "probe_results_gemma4b.json",
+        "mistral7b":  config.results_dir_ex4  / "probe_results_mistral7b.json",
+        "mistral24b": config.results_dir_ex4  / "probe_results_mistral24b.json",
     }
     results = {}
     for name, path in paths.items():

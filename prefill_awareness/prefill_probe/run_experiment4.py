@@ -52,7 +52,10 @@ from prefill_probe.analysis_ex4 import generate_all_figures, load_probe_results_
 from prefill_probe.config import Experiment4Config
 from prefill_probe.extract_ex4 import (
     extract_all_activations_gemma31b,
+    extract_all_activations_gemma4b,
     extract_all_activations_llama70b,
+    extract_all_activations_mistral7b,
+    extract_all_activations_mistral24b,
     run_all_extractions,
 )
 from prefill_probe.generate_ex4 import generate_all_responses
@@ -84,14 +87,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--target-model",
-        choices=["llama70b", "gemma31b", "both"],
+        choices=["llama70b", "gemma31b", "gemma4b", "gemma-all",
+                 "mistral7b", "mistral24b", "mistral-all", "both"],
         default="both",
         help=(
-            "Which model to run extract/perplexity for.  Use 'llama70b' on the "
-            "2× A100 pod and 'gemma31b' on the 1× A100 pod.  "
-            "The generate step always produces responses for both models. "
-            "Probe and analysis always run for all models with available results. "
-            "(default: both)"
+            "Which model(s) to run generate/extract/perplexity for.  "
+            "'llama70b': 2× A100 pod.  "
+            "'gemma31b'/'gemma4b'/'gemma-all': Gemma models on a Gemma machine.  "
+            "'mistral7b'/'mistral24b'/'mistral-all': Mistral models on a Mistral machine.  "
+            "'both': all models (default).  "
+            "Probe and analysis always run for all models with available results."
         ),
     )
     return parser.parse_args()
@@ -115,8 +120,11 @@ def main() -> None:
 
     config = Experiment4Config()
 
-    run_llama70b = args.target_model in ("llama70b", "both")
-    run_gemma31b = args.target_model in ("gemma31b", "both")
+    run_llama70b  = args.target_model in ("llama70b", "both")
+    run_gemma31b  = args.target_model in ("gemma31b",  "gemma-all",   "both")
+    run_gemma4b   = args.target_model in ("gemma4b",   "gemma-all",   "both")
+    run_mistral7b  = args.target_model in ("mistral7b",  "mistral-all", "both")
+    run_mistral24b = args.target_model in ("mistral24b", "mistral-all", "both")
 
     print(f"\nExperiment 4: Scaling Analysis")
     print(f"  Device: {get_device()}")
@@ -167,6 +175,15 @@ def main() -> None:
         if run_gemma31b:
             print("  --- Gemma 4 31B ---")
             extract_all_activations_gemma31b(responses, config)
+        if run_gemma4b:
+            print("  --- Gemma 4 4B ---")
+            extract_all_activations_gemma4b(responses, config)
+        if run_mistral7b:
+            print("  --- Mistral 7B ---")
+            extract_all_activations_mistral7b(responses, config)
+        if run_mistral24b:
+            print("  --- Mistral Small 24B ---")
+            extract_all_activations_mistral24b(responses, config)
     else:
         print("\n[Skipping Step 2] Using existing activation files.")
 
@@ -197,6 +214,42 @@ def main() -> None:
                 },
                 responses=responses,
                 output_path=config.activations_dir_gemma31b / "perplexity.json",
+                force=args.force,
+            )
+        if run_gemma4b:
+            _compute_perplexity_for_model(
+                target_model_id=config.gemma4b_model_id,
+                conditions={
+                    "self_prefill":  "response_gemma4b",
+                    "cross_llama8b": "response_llama8b",
+                    "cross_gemma9b": "response_gemma9b",
+                },
+                responses=responses,
+                output_path=config.activations_dir_gemma4b / "perplexity.json",
+                force=args.force,
+            )
+        if run_mistral7b:
+            _compute_perplexity_for_model(
+                target_model_id=config.mistral7b_model_id,
+                conditions={
+                    "self_prefill":  "response_mistral7b",
+                    "cross_llama8b": "response_llama8b",
+                    "cross_gemma9b": "response_gemma9b",
+                },
+                responses=responses,
+                output_path=config.activations_dir_mistral7b / "perplexity.json",
+                force=args.force,
+            )
+        if run_mistral24b:
+            _compute_perplexity_for_model(
+                target_model_id=config.mistral24b_model_id,
+                conditions={
+                    "self_prefill":  "response_mistral24b",
+                    "cross_llama8b": "response_llama8b",
+                    "cross_gemma9b": "response_gemma9b",
+                },
+                responses=responses,
+                output_path=config.activations_dir_mistral24b / "perplexity.json",
                 force=args.force,
             )
     else:

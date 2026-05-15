@@ -191,7 +191,7 @@ def compute_all_perplexity(
     config: Experiment4Config,
     force: bool = False,
 ) -> None:
-    """Compute perplexity for Llama 70B and Gemma 31B, all conditions."""
+    """Compute perplexity for Llama 70B, Gemma 31B, and Gemma 4B, all conditions."""
     print("\n--- Perplexity: Llama 3.3 70B ---")
     _compute_perplexity_for_model(
         target_model_id=config.llama70b_model_id,
@@ -215,5 +215,44 @@ def compute_all_perplexity(
         },
         responses=responses,
         output_path=config.activations_dir_gemma31b / "perplexity.json",
+        force=force,
+    )
+
+    print("\n--- Perplexity: Gemma 4 4B ---")
+    _compute_perplexity_for_model(
+        target_model_id=config.gemma4b_model_id,
+        conditions={
+            "self_prefill":  "response_gemma4b",
+            "cross_llama8b": "response_llama8b",
+            "cross_gemma9b": "response_gemma9b",
+        },
+        responses=responses,
+        output_path=config.activations_dir_gemma4b / "perplexity.json",
+        force=force,
+    )
+
+    print("\n--- Perplexity: Mistral 7B ---")
+    _compute_perplexity_for_model(
+        target_model_id=config.mistral7b_model_id,
+        conditions={
+            "self_prefill":  "response_mistral7b",
+            "cross_llama8b": "response_llama8b",
+            "cross_gemma9b": "response_gemma9b",
+        },
+        responses=responses,
+        output_path=config.activations_dir_mistral7b / "perplexity.json",
+        force=force,
+    )
+
+    print("\n--- Perplexity: Mistral Small 24B ---")
+    _compute_perplexity_for_model(
+        target_model_id=config.mistral24b_model_id,
+        conditions={
+            "self_prefill":  "response_mistral24b",
+            "cross_llama8b": "response_llama8b",
+            "cross_gemma9b": "response_gemma9b",
+        },
+        responses=responses,
+        output_path=config.activations_dir_mistral24b / "perplexity.json",
         force=force,
     )

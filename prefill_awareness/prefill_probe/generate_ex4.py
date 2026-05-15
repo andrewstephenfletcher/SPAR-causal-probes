@@ -115,17 +115,24 @@ def generate_all_responses(
     """
     Produce experiment4 responses.json by:
       1. Loading Exp 1 responses for llama8b + gemma9b responses and prompts.
-      2. Generating Llama 3.3 70B responses for the same prompts.
-      3. Generating Gemma 4 31B responses for the same prompts.
+      2. Generating Llama 3.3 70B responses (skipped if already present).
+      3. Generating Gemma 4 31B responses (skipped if already present).
+      4. Generating Gemma 4 4B responses (skipped if already present).
 
     Returns the merged list of response dicts (one per prompt).
     """
     output_path = config.generations_dir_ex4 / "responses.json"
+    required_fields = ["response_llama8b", "response_gemma9b",
+                       "response_llama70b", "response_gemma31b", "response_gemma4b",
+                       "response_mistral7b", "response_mistral24b"]
 
     if output_path.exists() and not force:
-        print(f"  Found existing responses at {output_path}, loading...")
         with open(output_path) as f:
-            return json.load(f)
+            existing = json.load(f)
+        if existing and all(all(f in r for f in required_fields) for r in existing):
+            print(f"  Found complete responses at {output_path}, loading...")
+            return existing
+        print(f"  Found partial responses at {output_path}; extending with missing fields...")
 
     # ------------------------------------------------------------------
     # Load Exp 1 responses (provides prompt text, splits, llama8b/gemma9b)
@@ -142,26 +149,37 @@ def generate_all_responses(
 
     print(f"  Loaded {len(exp1_responses)} prompts from Experiment 1 responses.")
 
-    # Build working dict keyed by prompt_id
+    # Build working dict keyed by prompt_id, seeding from existing file if present
     results: dict[int, dict] = {}
+    if output_path.exists() and not force:
+        with open(output_path) as f:
+            for r in json.load(f):
+                results[r["prompt_id"]] = r
+
     for r in exp1_responses:
         pid = r["prompt_id"]
-        results[pid] = {
-            "prompt_id": pid,
-            "instruction": r["instruction"],
-            "split": r["split"],
-            "response_llama8b": r["response_target"],
-            "response_gemma9b": r["response_source"],
-        }
+        if pid not in results:
+            results[pid] = {
+                "prompt_id": pid,
+                "instruction": r["instruction"],
+                "split": r["split"],
+                "response_llama8b": r["response_target"],
+                "response_gemma9b": r["response_source"],
+            }
 
     prompts = list(results.values())
 
     # ------------------------------------------------------------------
-    # Generate Llama 3.3 70B responses
+    # Generate Llama 3.3 70B responses (skip if already in results)
     # ------------------------------------------------------------------
     llama70b_path = config.generations_dir_ex4 / "responses_llama70b_partial.json"
 
-    done_llama70b: set[int] = set()
+    done_llama70b: set[int] = {
+        pid for pid, r in results.items() if "response_llama70b" in r
+    }
+    if done_llama70b:
+        print(f"  Llama 70B: {len(done_llama70b)} responses already present, skipping generation.")
+
     if llama70b_path.exists():
         with open(llama70b_path) as f:
             partial = json.load(f)
@@ -203,11 +221,16 @@ def generate_all_responses(
         print(f"  Llama 70B generation done ({len(done_llama70b)} prompts).")
 
     # ------------------------------------------------------------------
-    # Generate Gemma 4 31B responses
+    # Generate Gemma 4 31B responses (skip if already in results)
     # ------------------------------------------------------------------
     gemma31b_path = config.generations_dir_ex4 / "responses_gemma31b_partial.json"
 
-    done_gemma31b: set[int] = set()
+    done_gemma31b: set[int] = {
+        pid for pid, r in results.items() if "response_gemma31b" in r
+    }
+    if done_gemma31b:
+        print(f"  Gemma 31B: {len(done_gemma31b)} responses already present, skipping generation.")
+
     if gemma31b_path.exists():
         with open(gemma31b_path) as f:
             partial = json.load(f)
@@ -247,12 +270,60 @@ def generate_all_responses(
         print(f"  Gemma 31B generation done ({len(done_gemma31b)} prompts).")
 
     # ------------------------------------------------------------------
-    # Filter: require all four response fields and min token count
-    # For token counting we use the llama8b tokenizer as a common reference
-    # (same tokenizer as Exp 1 filtering).
+    # Generate Gemma 4 4B responses (skip if already in results)
+    # ------------------------------------------------------------------
+    gemma4b_path = config.generations_dir_ex4 / "responses_gemma4b_partial.json"
+
+    done_gemma4b: set[int] = {
+        pid for pid, r in results.items() if "response_gemma4b" in r
+    }
+    if done_gemma4b:
+        print(f"  Gemma 4B: {len(done_gemma4b)} responses already present, skipping generation.")
+
+    if gemma4b_path.exists():
+        with open(gemma4b_path) as f:
+            partial = json.load(f)
+        for pid, text in partial.items():
+            results[int(pid)]["response_gemma4b"] = text
+            done_gemma4b.add(int(pid))
+        print(f"  Resuming Gemma 4B generation from {len(done_gemma4b)} / {len(prompts)}")
+
+    remaining_gemma4b = [p for p in prompts if p["prompt_id"] not in done_gemma4b]
+    if remaining_gemma4b:
+        device_str = get_device()
+        print(f"  Loading {config.gemma4b_model_id} on {device_str}...")
+        model, tokenizer = _load_model_and_tokenizer(config.gemma4b_model_id)
+        model.eval()
+
+        for prompt in tqdm(remaining_gemma4b, desc="Gemma 4B"):
+            pid = prompt["prompt_id"]
+            input_text = _format_generation_prompt(
+                tokenizer, prompt["instruction"], config.gemma4b_model_id
+            )
+            response_text = _generate_response(model, tokenizer, input_text, config)
+            results[pid]["response_gemma4b"] = response_text
+            done_gemma4b.add(pid)
+
+            if len(done_gemma4b) % 20 == 0:
+                partial_data = {str(p): results[p]["response_gemma4b"]
+                                for p in done_gemma4b}
+                with open(gemma4b_path, "w") as f:
+                    json.dump(partial_data, f)
+
+        partial_data = {str(p): results[p]["response_gemma4b"] for p in done_gemma4b}
+        with open(gemma4b_path, "w") as f:
+            json.dump(partial_data, f)
+
+        del model
+        clear_device_cache()
+        print(f"  Gemma 4B generation done ({len(done_gemma4b)} prompts).")
+
+    # ------------------------------------------------------------------
+    # Filter: require all seven response fields and min token count
     # ------------------------------------------------------------------
     required_fields = ["response_llama8b", "response_gemma9b",
-                       "response_llama70b", "response_gemma31b"]
+                       "response_llama70b", "response_gemma31b", "response_gemma4b",
+                       "response_mistral7b", "response_mistral24b"]
 
     print(f"  Filtering responses (min {config.min_response_tokens} tokens per response)...")
     print(f"  Loading Llama 8B tokenizer for token counting...")
@@ -283,8 +354,107 @@ def generate_all_responses(
     with open(output_path, "w") as f:
         json.dump(valid, f, indent=2)
 
+    # ------------------------------------------------------------------
+    # Generate Mistral 7B responses (skip if already in results)
+    # ------------------------------------------------------------------
+    mistral7b_path = config.generations_dir_ex4 / "responses_mistral7b_partial.json"
+
+    done_mistral7b: set[int] = {
+        pid for pid, r in results.items() if "response_mistral7b" in r
+    }
+    if done_mistral7b:
+        print(f"  Mistral 7B: {len(done_mistral7b)} responses already present, skipping generation.")
+
+    if mistral7b_path.exists():
+        with open(mistral7b_path) as f:
+            partial = json.load(f)
+        for pid, text in partial.items():
+            results[int(pid)]["response_mistral7b"] = text
+            done_mistral7b.add(int(pid))
+        print(f"  Resuming Mistral 7B generation from {len(done_mistral7b)} / {len(prompts)}")
+
+    remaining_mistral7b = [p for p in prompts if p["prompt_id"] not in done_mistral7b]
+    if remaining_mistral7b:
+        device_str = get_device()
+        print(f"  Loading {config.mistral7b_model_id} on {device_str}...")
+        model, tokenizer = _load_model_and_tokenizer(config.mistral7b_model_id)
+        model.eval()
+
+        for prompt in tqdm(remaining_mistral7b, desc="Mistral 7B"):
+            pid = prompt["prompt_id"]
+            input_text = _format_generation_prompt(
+                tokenizer, prompt["instruction"], config.mistral7b_model_id
+            )
+            response_text = _generate_response(model, tokenizer, input_text, config)
+            results[pid]["response_mistral7b"] = response_text
+            done_mistral7b.add(pid)
+
+            if len(done_mistral7b) % 20 == 0:
+                partial_data = {str(p): results[p]["response_mistral7b"]
+                                for p in done_mistral7b}
+                with open(mistral7b_path, "w") as f:
+                    json.dump(partial_data, f)
+
+        partial_data = {str(p): results[p]["response_mistral7b"] for p in done_mistral7b}
+        with open(mistral7b_path, "w") as f:
+            json.dump(partial_data, f)
+
+        del model
+        clear_device_cache()
+        print(f"  Mistral 7B generation done ({len(done_mistral7b)} prompts).")
+
+    # ------------------------------------------------------------------
+    # Generate Mistral Small 24B responses (skip if already in results)
+    # ------------------------------------------------------------------
+    mistral24b_path = config.generations_dir_ex4 / "responses_mistral24b_partial.json"
+
+    done_mistral24b: set[int] = {
+        pid for pid, r in results.items() if "response_mistral24b" in r
+    }
+    if done_mistral24b:
+        print(f"  Mistral 24B: {len(done_mistral24b)} responses already present, skipping generation.")
+
+    if mistral24b_path.exists():
+        with open(mistral24b_path) as f:
+            partial = json.load(f)
+        for pid, text in partial.items():
+            results[int(pid)]["response_mistral24b"] = text
+            done_mistral24b.add(int(pid))
+        print(f"  Resuming Mistral 24B generation from {len(done_mistral24b)} / {len(prompts)}")
+
+    remaining_mistral24b = [p for p in prompts if p["prompt_id"] not in done_mistral24b]
+    if remaining_mistral24b:
+        device_str = get_device()
+        print(f"  Loading {config.mistral24b_model_id} on {device_str}...")
+        model, tokenizer = _load_model_and_tokenizer(config.mistral24b_model_id)
+        model.eval()
+
+        for prompt in tqdm(remaining_mistral24b, desc="Mistral 24B"):
+            pid = prompt["prompt_id"]
+            input_text = _format_generation_prompt(
+                tokenizer, prompt["instruction"], config.mistral24b_model_id
+            )
+            response_text = _generate_response(model, tokenizer, input_text, config)
+            results[pid]["response_mistral24b"] = response_text
+            done_mistral24b.add(pid)
+
+            if len(done_mistral24b) % 20 == 0:
+                partial_data = {str(p): results[p]["response_mistral24b"]
+                                for p in done_mistral24b}
+                with open(mistral24b_path, "w") as f:
+                    json.dump(partial_data, f)
+
+        partial_data = {str(p): results[p]["response_mistral24b"] for p in done_mistral24b}
+        with open(mistral24b_path, "w") as f:
+            json.dump(partial_data, f)
+
+        del model
+        clear_device_cache()
+        print(f"  Mistral 24B generation done ({len(done_mistral24b)} prompts).")
+
     # Clean up partial checkpoints on success
-    for partial_file in [llama70b_path, gemma31b_path]:
+    for partial_file in [llama70b_path, gemma31b_path, gemma4b_path,
+                         mistral7b_path, mistral24b_path]:
         if partial_file.exists():
             partial_file.unlink()
 
