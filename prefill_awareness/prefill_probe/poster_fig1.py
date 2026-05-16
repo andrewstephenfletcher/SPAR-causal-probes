@@ -33,8 +33,8 @@ MODEL_DISPLAY = {
     "llama70b":  "Llama 3.3 70B",
     "gemma4b":   "Gemma 4 4B",
     "gemma31b":  "Gemma 4 31B",
-    "mistral7b":  "Mistral 7B",
-    "mistral24b": "Mistral Small 24B",
+    "qwen7b":  "Qwen 7B",
+    "qwen32b": "Qwen 32B",
 }
 
 # Purple for Llama, green for Gemma, orange/amber for Mistral
@@ -43,8 +43,8 @@ MODEL_COLORS = {
     "llama70b":  "#4A235A",   # dark purple
     "gemma4b":   "#27AE60",   # medium green
     "gemma31b":  "#145A32",   # dark green
-    "mistral7b":  "#E67E22",  # medium orange
-    "mistral24b": "#784212",  # dark orange/brown
+    "qwen7b":  "#E67E22",  # medium orange
+    "qwen32b": "#784212",  # dark orange/brown
 }
 
 # Primary cross-family condition used for the main scaling comparison
@@ -53,8 +53,8 @@ PRIMARY_CROSS = {
     "llama70b":  "cross_gemma9b",
     "gemma4b":   "cross_llama8b",
     "gemma31b":  "cross_llama8b",
-    "mistral7b":  "cross_llama8b",
-    "mistral24b": "cross_llama8b",
+    "qwen7b":  "cross_llama8b",
+    "qwen32b": "cross_llama8b",
 }
 
 
@@ -90,7 +90,7 @@ def make_poster_fig1(out_path: Path | None = None) -> None:
     threshold = 0.95
     crossings = {}  # model_name -> relative depth of first 0.95 crossing
 
-    for model_name in ("llama8b", "llama70b", "gemma4b", "gemma31b", "mistral7b", "mistral24b"):
+    for model_name in ("llama8b", "llama70b", "gemma4b", "gemma31b", "qwen7b", "qwen32b"):
         model_r = all_results.get(model_name)
         if model_r is None:
             continue

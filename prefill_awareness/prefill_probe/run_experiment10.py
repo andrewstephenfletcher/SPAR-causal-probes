@@ -16,7 +16,7 @@ Run from the prefill_awareness/ directory:
 
 Steps:
   1. generate  — generate responses from Llama 70B, Llama 8B, Gemma 31B,
-                 Mistral 24B for BigCodeBench / OASST1 / GPQA
+                 Qwen 32B for BigCodeBench / OASST1 / GPQA
   2. extract   — extract Llama 70B residual-stream activations at layer 60
                  for all (dataset, condition) pairs
   3. probe     — train 9 probes; evaluate in 9×9 transfer matrix
@@ -26,6 +26,9 @@ Prerequisites:
   - HF_TOKEN set and model licences accepted on HuggingFace
   - GPQA requires explicit access grant at huggingface.co/datasets/Idavidrein/gpqa
 """
+
+import os
+os.environ["HF_HOME"] = "/root/.cache/huggingface"
 
 import argparse
 import json

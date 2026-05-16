@@ -40,7 +40,7 @@ _COND_LABELS = {
     "self":           "Self (Llama 8B)",
     "altered_self":   "Altered-self",
     "gemma":          "Gemma 9B",
-    "mistral":        "Mistral 7B",
+    "mistral":        "Qwen 7B",
     "style_imitated": "Style-imitated",
 }
 _COND_MARKERS = {

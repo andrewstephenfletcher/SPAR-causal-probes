@@ -1,7 +1,7 @@
 """
 2D (layer × position) activation extraction for Experiment 8.
 
-For each model (Mistral 24B, Gemma 31B) and each prompt we run TWO forward
+For each model (Qwen 32B, Gemma 31B) and each prompt we run TWO forward
 passes:
   - Self-prefill:  the model's own response prefilled into its template.
   - Cross-prefill: Llama 8B's response prefilled into the model's template.
@@ -127,8 +127,13 @@ def _extract_one_prompt(
                     )
         return hook_fn
 
+    if hasattr(model, "language_model") and hasattr(model.language_model, "model"):
+        all_layers = model.language_model.model.layers
+    else:
+        all_layers = model.model.layers
+
     for layer_idx in layers:
-        h = model.model.layers[layer_idx].register_forward_hook(
+        h = all_layers[layer_idx].register_forward_hook(
             make_hook(layer_idx, abs_positions)
         )
         hooks.append(h)

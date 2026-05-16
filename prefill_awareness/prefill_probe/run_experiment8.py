@@ -24,7 +24,7 @@ Steps:
 
 Prerequisites:
   - Experiment 1 responses: outputs/experiment1/generations/responses.json
-  - HF_TOKEN set (Mistral 24B requires access; Gemma 31B is gated)
+  - HF_TOKEN set (Qwen 32B requires access; Gemma 31B is gated)
 """
 
 from __future__ import annotations

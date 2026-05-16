@@ -42,8 +42,8 @@ MODEL_DISPLAY = {
     "llama70b":  "Llama 3.3 70B",
     "gemma4b":   "Gemma 4 4B",
     "gemma31b":  "Gemma 4 31B",
-    "mistral7b":  "Mistral 7B",
-    "mistral24b": "Mistral Small 24B",
+    "qwen7b":  "Qwen 7B",
+    "qwen32b": "Qwen 32B",
 }
 
 MODEL_COLORS = {
@@ -51,8 +51,8 @@ MODEL_COLORS = {
     "llama70b":  "darkorange",
     "gemma4b":   "#27AE60",
     "gemma31b":  "#145A32",
-    "mistral7b":  "#E67E22",
-    "mistral24b": "#784212",
+    "qwen7b":  "#E67E22",
+    "qwen32b": "#784212",
 }
 
 # Primary cross-family condition used for the main scaling comparison
@@ -61,8 +61,8 @@ PRIMARY_CROSS = {
     "llama70b":  "cross_gemma9b",
     "gemma4b":   "cross_llama8b",
     "gemma31b":  "cross_llama8b",
-    "mistral7b":  "cross_llama8b",
-    "mistral24b": "cross_llama8b",
+    "qwen7b":  "cross_llama8b",
+    "qwen32b": "cross_llama8b",
 }
 
 
@@ -115,7 +115,7 @@ def _figure_normalized_auroc(
 ) -> None:
     fig, ax = plt.subplots(figsize=(11, 5))
 
-    for model_name in ("llama8b", "llama70b", "gemma4b", "gemma31b", "mistral7b", "mistral24b"):
+    for model_name in ("llama8b", "llama70b", "gemma4b", "gemma31b", "qwen7b", "qwen32b"):
         model_r = all_results[model_name]
         cond_name = PRIMARY_CROSS[model_name]
         if cond_name not in model_r.get("cross_conditions", {}):
@@ -149,7 +149,7 @@ def _figure_normalized_auroc(
     )
     ax.set_xlim(-0.02, 1.02)
     ax.set_ylim(0.35, 1.05)
-    ax.legend(fontsize=9, loc="upper left")
+    ax.legend(fontsize=9, loc="lower right")
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -167,7 +167,7 @@ def _figure_peak_layer_analysis(
     all_results: dict[str, dict],
     config: Experiment4Config,
 ) -> None:
-    model_order = ["llama8b", "llama70b", "gemma4b", "gemma31b", "mistral7b", "mistral24b"]
+    model_order = ["llama8b", "llama70b", "gemma4b", "gemma31b", "qwen7b", "qwen32b"]
     stats = {
         m: _best_layer_stats(all_results[m], PRIMARY_CROSS[m])
         for m in model_order
@@ -239,7 +239,7 @@ def _figure_probe_vs_perplexity_gap(
     all_results: dict[str, dict],
     config: Experiment4Config,
 ) -> None:
-    model_order = ["llama8b", "llama70b", "gemma4b", "gemma31b", "mistral7b", "mistral24b"]
+    model_order = ["llama8b", "llama70b", "gemma4b", "gemma31b", "qwen7b", "qwen32b"]
     stats = {
         m: _best_layer_stats(all_results[m], PRIMARY_CROSS[m])
         for m in model_order
@@ -346,7 +346,7 @@ def print_summary_table(
     all_results: dict[str, dict],
     config: Experiment4Config,
 ) -> None:
-    model_order = ["llama8b", "llama70b", "gemma4b", "gemma31b", "mistral7b", "mistral24b"]
+    model_order = ["llama8b", "llama70b", "gemma4b", "gemma31b", "qwen7b", "qwen32b"]
     primary = PRIMARY_CROSS
 
     header = (
@@ -448,8 +448,8 @@ def load_probe_results_if_present(config: Experiment4Config) -> dict[str, dict]:
         "llama70b":  config.results_dir_ex4  / "probe_results_llama70b.json",
         "gemma31b":  config.results_dir_ex4  / "probe_results_gemma31b.json",
         "gemma4b":   config.results_dir_ex4  / "probe_results_gemma4b.json",
-        "mistral7b":  config.results_dir_ex4  / "probe_results_mistral7b.json",
-        "mistral24b": config.results_dir_ex4  / "probe_results_mistral24b.json",
+        "qwen7b":  config.results_dir_ex4  / "probe_results_qwen7b.json",
+        "qwen32b": config.results_dir_ex4  / "probe_results_qwen32b.json",
     }
     results = {}
     for name, path in paths.items():

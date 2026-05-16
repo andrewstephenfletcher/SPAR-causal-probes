@@ -10,7 +10,7 @@ Files written per (dataset, condition):
   activations/{dataset}_self.pt
   activations/{dataset}_cross_llama8b.pt
   activations/{dataset}_cross_gemma31b.pt
-  activations/{dataset}_cross_mistral24b.pt
+  activations/{dataset}_cross_qwen32b.pt
 
 Each .pt file is a list[dict] with keys:
   prompt_id, split, activation (np.ndarray float16, shape (hidden_dim,))
@@ -144,13 +144,13 @@ def extract_all_activations(
       self              — response_llama70b
       cross_llama8b     — response_llama8b
       cross_gemma31b    — response_gemma31b
-      cross_mistral24b  — response_mistral24b
+      cross_qwen32b  — response_qwen32b
     """
     conditions = {
         "self":             "response_llama70b",
         "cross_llama8b":    "response_llama8b",
         "cross_gemma31b":   "response_gemma31b",
-        "cross_mistral24b": "response_mistral24b",
+        "cross_qwen32b": "response_qwen32b",
     }
 
     # Skip if everything already exists
@@ -216,7 +216,7 @@ def load_all_activations(
     Load all activation files from disk.
     Returns {dataset: {condition: [records]}}.
     """
-    conditions = ["self", "cross_llama8b", "cross_gemma31b", "cross_mistral24b"]
+    conditions = ["self", "cross_llama8b", "cross_gemma31b", "cross_qwen32b"]
     result = {}
     for ds in config.datasets:
         result[ds] = {}

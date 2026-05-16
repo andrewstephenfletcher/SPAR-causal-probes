@@ -3,18 +3,21 @@ Response generation for Experiment 10 (Probe Generalisation).
 
 Generates responses from four source models across three prompt datasets:
   - Self:  Llama 3.3 70B (the target model generates its own responses)
-  - Cross: Llama 3.1 8B, Gemma 4 31B, Mistral Small 24B
+  - Cross: Llama 3.1 8B, Gemma 4 31B, Qwen 32B
 
 Output per dataset — outputs/experiment10/generations/{dataset}_responses.json —
 has one record per prompt with keys:
   prompt_id, dataset, instruction, split,
-  response_llama70b, response_llama8b, response_gemma31b, response_mistral24b
+  response_llama70b, response_llama8b, response_gemma31b, response_qwen32b
 
 IMPORTANT: max_new_tokens=512 — no response truncation.
 """
 
 import gc
 import json
+import os
+import shutil
+from pathlib import Path
 
 import torch
 from tqdm import tqdm
@@ -57,22 +60,29 @@ def _format_prompt(tokenizer, model_id: str, instruction: str) -> str:
     )
 
 
-def _generate_response(
-    model, tokenizer, input_text: str, config: Experiment10Config,
-) -> str:
+def _generate_batch(
+    model, tokenizer, input_texts: list[str], config: Experiment10Config,
+) -> list[str]:
     device = next(model.parameters()).device
-    inputs = tokenizer(input_text, return_tensors="pt").to(device)
+    inputs = tokenizer(
+        input_texts, return_tensors="pt", padding=True, truncation=False,
+    ).to(device)
     torch.manual_seed(config.seed)
     with torch.no_grad():
-        output = model.generate(
+        outputs = model.generate(
             **inputs,
             max_new_tokens=config.max_new_tokens,
             temperature=config.temperature,
             top_p=config.top_p,
             do_sample=True,
         )
-    n_input = inputs["input_ids"].shape[1]
-    return tokenizer.decode(output[0][n_input:], skip_special_tokens=True)
+    n_input = inputs["input_ids"].shape[1]  # total length incl. left-padding
+    results = []
+    for i in range(len(input_texts)):
+        results.append(
+            tokenizer.decode(outputs[i][n_input:], skip_special_tokens=True)
+        )
+    return results
 
 
 def _count_tokens(tokenizer, text: str) -> int:
@@ -86,8 +96,21 @@ def _generate_for_model(
     all_prompts: dict[str, list[dict]],
     results_per_dataset: dict[str, dict[int, dict]],
     config: Experiment10Config,
+    delete_cache: bool = False,
 ) -> None:
     """Load one source model, generate responses for all datasets, unload."""
+    # Pre-load partial checkpoints so the completeness check below is accurate.
+    for ds_name in all_prompts:
+        partial_path = config.generations_dir / f"{ds_name}_{response_key}_partial.json"
+        if partial_path.exists():
+            with open(partial_path) as f:
+                partial = json.load(f)
+            for pid_str, text in partial.items():
+                pid = int(pid_str)
+                if pid not in results_per_dataset[ds_name]:
+                    results_per_dataset[ds_name][pid] = {}
+                results_per_dataset[ds_name][pid][response_key] = text
+
     total_needed = sum(
         sum(
             1 for p in prompts
@@ -111,15 +134,7 @@ def _generate_for_model(
             if response_key in r
         }
 
-        if partial_path.exists():
-            with open(partial_path) as f:
-                partial = json.load(f)
-            for pid_str, text in partial.items():
-                pid = int(pid_str)
-                if pid not in results_per_dataset[ds_name]:
-                    results_per_dataset[ds_name][pid] = {}
-                results_per_dataset[ds_name][pid][response_key] = text
-                done.add(pid)
+        if done:
             print(f"    [{ds_name}] Resuming {label} from {len(done)}/{len(prompts)}")
 
         remaining = [p for p in prompts if p["prompt_id"] not in done]
@@ -127,20 +142,23 @@ def _generate_for_model(
             print(f"    [{ds_name}] {label}: already complete.")
             continue
 
-        for prompt in tqdm(remaining, desc=f"    {label} / {ds_name}"):
-            pid = prompt["prompt_id"]
-            input_text = _format_prompt(tokenizer, model_id, prompt["instruction"])
-            response_text = _generate_response(model, tokenizer, input_text, config)
+        bs = config.batch_size
+        for batch_start in tqdm(range(0, len(remaining), bs), desc=f"    {label} / {ds_name}"):
+            batch = remaining[batch_start : batch_start + bs]
+            input_texts = [_format_prompt(tokenizer, model_id, p["instruction"]) for p in batch]
+            responses = _generate_batch(model, tokenizer, input_texts, config)
 
-            if pid not in results_per_dataset[ds_name]:
-                results_per_dataset[ds_name][pid] = {
-                    "prompt_id": pid,
-                    "dataset": ds_name,
-                    "instruction": prompt["instruction"],
-                    "split": prompt["split"],
-                }
-            results_per_dataset[ds_name][pid][response_key] = response_text
-            done.add(pid)
+            for prompt, response_text in zip(batch, responses):
+                pid = prompt["prompt_id"]
+                if pid not in results_per_dataset[ds_name]:
+                    results_per_dataset[ds_name][pid] = {
+                        "prompt_id": pid,
+                        "dataset": ds_name,
+                        "instruction": prompt["instruction"],
+                        "split": prompt["split"],
+                    }
+                results_per_dataset[ds_name][pid][response_key] = response_text
+                done.add(pid)
 
             if len(done) % config.checkpoint_interval == 0:
                 partial_data = {
@@ -163,6 +181,13 @@ def _generate_for_model(
     clear_device_cache()
     print(f"  {label}: generation complete.")
 
+    if delete_cache:
+        hf_home = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
+        cache_dir = hf_home / "hub" / ("models--" + model_id.replace("/", "--"))
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir)
+            print(f"  Deleted model cache: {cache_dir}")
+
 
 def generate_all_responses(
     config: Experiment10Config,
@@ -174,7 +199,7 @@ def generate_all_responses(
     """
     required_keys = [
         "response_llama70b", "response_llama8b",
-        "response_gemma31b", "response_mistral24b",
+        "response_gemma31b", "response_qwen32b",
     ]
 
     # Check if all outputs are already complete
@@ -223,13 +248,13 @@ def generate_all_responses(
                 }
 
     source_models = [
-        (config.target_model_id,    "response_llama70b",    "Llama 3.3 70B (self)"),
-        (config.llama8b_model_id,   "response_llama8b",     "Llama 3.1 8B"),
-        (config.gemma31b_model_id,  "response_gemma31b",    "Gemma 4 31B"),
-        (config.mistral24b_model_id, "response_mistral24b", "Mistral Small 24B"),
+        (config.llama8b_model_id,  "response_llama8b",  "Llama 3.1 8B",         True),
+        (config.gemma31b_model_id, "response_gemma31b", "Gemma 4 31B",          True),
+        (config.qwen32b_model_id,  "response_qwen32b",  "Qwen 32B",             True),
+        (config.target_model_id,   "response_llama70b", "Llama 3.3 70B (self)", False),
     ]
 
-    for model_id, response_key, label in source_models:
+    for model_id, response_key, label, delete_cache in source_models:
         print(f"\n  --- {label} ---")
         _generate_for_model(
             model_id=model_id,
@@ -238,6 +263,7 @@ def generate_all_responses(
             all_prompts=all_prompts,
             results_per_dataset=results_per_dataset,
             config=config,
+            delete_cache=delete_cache,
         )
 
     print("\n  Loading Llama tokenizer for token-count filtering...")
@@ -263,7 +289,7 @@ def generate_all_responses(
         print(f"  [{ds}] Retained {len(valid)} / {len(results_per_dataset[ds])} "
               f"(discarded {len(discarded)}) → {out_path}")
 
-        for _, response_key, _ in source_models:
+        for _, response_key, _, _ in source_models:
             partial = config.generations_dir / f"{ds}_{response_key}_partial.json"
             if partial.exists():
                 partial.unlink()

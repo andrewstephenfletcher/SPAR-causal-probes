@@ -83,16 +83,18 @@ def build_prefill_input(
 
 
 def _count_trailing_special_tokens(tokenizer, prefill_ids: torch.Tensor) -> int:
-    """Count consecutive trailing special tokens (up to 4) from the end."""
+    """Count consecutive trailing special/whitespace tokens (up to 8) from the end."""
     all_special_ids = set(tokenizer.all_special_ids)
     n_trailing = 0
     seq_len = prefill_ids.shape[1]
-    for offset in range(1, 5):
+    for offset in range(1, 9):
         pos = seq_len - offset
         if pos < 0:
             break
         tok_id = prefill_ids[0, pos].item()
-        if tok_id in all_special_ids:
+        is_special = tok_id in all_special_ids
+        is_whitespace_only = tokenizer.decode([tok_id]).strip() == ''
+        if is_special or is_whitespace_only:
             n_trailing = offset
         else:
             break
@@ -125,7 +127,7 @@ def verify_extraction_positions(
         extracted_tok = tokenizer.decode([extracted_id])
 
         expected_id = tokenizer(
-            r[response_key], add_special_tokens=False
+            r[response_key].rstrip(), add_special_tokens=False
         )["input_ids"][-1]
         expected_tok = tokenizer.decode([expected_id])
 
@@ -155,11 +157,29 @@ def verify_extraction_positions(
 # ---------------------------------------------------------------------------
 
 def get_transformer_layers(model):
+    # Standard CausalLM: model.model.layers
     if hasattr(model, "model") and hasattr(model.model, "layers"):
         return model.model.layers
+    # VLM with language_model submodule (e.g. Gemma4ForConditionalGeneration)
+    if hasattr(model, "language_model"):
+        lm = model.language_model
+        # language_model is a ForCausalLM wrapper: language_model.model.layers
+        if hasattr(lm, "model") and hasattr(lm.model, "layers"):
+            return lm.model.layers
+        # language_model exposes layers directly
+        if hasattr(lm, "layers"):
+            return lm.layers
+    # VLM where model.model contains a language_model
+    if hasattr(model, "model") and hasattr(model.model, "language_model"):
+        lm = model.model.language_model
+        if hasattr(lm, "layers"):
+            return lm.layers
+        if hasattr(lm, "model") and hasattr(lm.model, "layers"):
+            return lm.model.layers
+    top_attrs = [a for a in vars(model) if not a.startswith("_")]
     raise RuntimeError(
-        f"Cannot find model.model.layers for {type(model).__name__}. "
-        "Inspect the model architecture and update get_transformer_layers()."
+        f"Cannot find transformer layers for {type(model).__name__}. "
+        f"Top-level attributes: {top_attrs}"
     )
 
 
@@ -216,6 +236,14 @@ def _run_forward_pass(
 # Per-condition extraction with checkpointing
 # ---------------------------------------------------------------------------
 
+def _pt_file_is_complete(path: Path) -> bool:
+    """Return True iff path exists and contains a non-empty list."""
+    if not path.exists():
+        return False
+    data = torch.load(path, weights_only=False)
+    return isinstance(data, list) and len(data) > 0
+
+
 def _extract_one_condition(
     condition_name: str,
     response_key: str,
@@ -231,8 +259,11 @@ def _extract_one_condition(
     final_path = activations_dir / f"{condition_name}.pt"
 
     if final_path.exists():
-        print(f"  [{condition_name}] Already complete, skipping.")
-        return
+        existing = torch.load(final_path, weights_only=False)
+        if isinstance(existing, list) and len(existing) > 0:
+            print(f"  [{condition_name}] Already complete ({len(existing)} records), skipping.")
+            return
+        print(f"  [{condition_name}] File exists but is empty — re-extracting.")
 
     verify_extraction_positions(
         tokenizer, target_model_id, responses, response_key, n_examples=5
@@ -290,7 +321,7 @@ def extract_all_activations_llama70b(
         "cross_llama8b": "response_llama8b",
     }
 
-    if all((config.activations_dir_llama70b / f"{c}.pt").exists() for c in conditions):
+    if all(_pt_file_is_complete(config.activations_dir_llama70b / f"{c}.pt") for c in conditions):
         print("  Llama 70B: all activation files present, skipping extraction.")
         return
 
@@ -345,7 +376,7 @@ def extract_all_activations_gemma31b(
         "cross_gemma9b": "response_gemma9b",
     }
 
-    if all((config.activations_dir_gemma31b / f"{c}.pt").exists() for c in conditions):
+    if all(_pt_file_is_complete(config.activations_dir_gemma31b / f"{c}.pt") for c in conditions):
         print("  Gemma 31B: all activation files present, skipping extraction.")
         return
 
@@ -416,7 +447,7 @@ def _extract_all_activations_for(
     label: str,
 ) -> None:
     """Generic extraction helper — load model, extract all conditions, unload."""
-    if all((activations_dir / f"{c}.pt").exists() for c in conditions):
+    if all(_pt_file_is_complete(activations_dir / f"{c}.pt") for c in conditions):
         print(f"  {label}: all activation files present, skipping extraction.")
         return
 
@@ -457,39 +488,39 @@ def _extract_all_activations_for(
     clear_device_cache()
 
 
-def extract_all_activations_mistral7b(
+def extract_all_activations_qwen7b(
     responses: list[dict],
     config: Experiment4Config,
 ) -> None:
     _extract_all_activations_for(
-        model_id=config.mistral7b_model_id,
+        model_id=config.qwen7b_model_id,
         conditions={
-            "self_prefill":  "response_mistral7b",
+            "self_prefill":  "response_qwen7b",
             "cross_llama8b": "response_llama8b",
             "cross_gemma9b": "response_gemma9b",
         },
-        activations_dir=config.activations_dir_mistral7b,
+        activations_dir=config.activations_dir_qwen7b,
         responses=responses,
         config=config,
-        label="Mistral 7B",
+        label="Qwen 7B",
     )
 
 
-def extract_all_activations_mistral24b(
+def extract_all_activations_qwen32b(
     responses: list[dict],
     config: Experiment4Config,
 ) -> None:
     _extract_all_activations_for(
-        model_id=config.mistral24b_model_id,
+        model_id=config.qwen32b_model_id,
         conditions={
-            "self_prefill":  "response_mistral24b",
+            "self_prefill":  "response_qwen32b",
             "cross_llama8b": "response_llama8b",
             "cross_gemma9b": "response_gemma9b",
         },
-        activations_dir=config.activations_dir_mistral24b,
+        activations_dir=config.activations_dir_qwen32b,
         responses=responses,
         config=config,
-        label="Mistral 24B",
+        label="Qwen 32B",
     )
 
 
@@ -503,8 +534,8 @@ def run_all_extractions(responses: list[dict], config: Experiment4Config) -> Non
     print("\n--- Extracting activations: Gemma 4 4B ---")
     extract_all_activations_gemma4b(responses, config)
 
-    print("\n--- Extracting activations: Mistral 7B ---")
-    extract_all_activations_mistral7b(responses, config)
+    print("\n--- Extracting activations: Qwen 7B ---")
+    extract_all_activations_qwen7b(responses, config)
 
-    print("\n--- Extracting activations: Mistral Small 24B ---")
-    extract_all_activations_mistral24b(responses, config)
+    print("\n--- Extracting activations: Qwen 32B ---")
+    extract_all_activations_qwen32b(responses, config)

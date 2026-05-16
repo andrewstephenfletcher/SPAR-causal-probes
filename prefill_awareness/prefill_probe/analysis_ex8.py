@@ -2,10 +2,10 @@
 Figure generation for Experiment 8 (Cross-Architecture Probing).
 
 Figures:
-  1. 2D heatmaps — AUROC at each (layer, position) cell for Mistral 24B and
+  1. 2D heatmaps — AUROC at each (layer, position) cell for Qwen 32B and
      Gemma 31B, shown side-by-side.
   2. Scaling curve — peak probe AUROC vs. model size (parameters), combining
-     Ex2 (Llama 8B) + Ex8 (Mistral 24B, Gemma 31B).
+     Ex2 (Llama 8B) + Ex8 (Qwen 32B, Gemma 31B).
   3. Accumulation curves — AUROC at the peak layer as a function of position,
      comparing all available models.
   4. Functional threshold scatter — first position where AUROC > 0.75 vs.
@@ -70,7 +70,7 @@ def figure1_heatmaps(dfs: dict[str, pd.DataFrame], config: Experiment8Config) ->
     if n_models == 1:
         axes = [axes]
 
-    model_labels = {"mistral": "Mistral 24B", "gemma31b": "Gemma 31B"}
+    model_labels = {"mistral": "Qwen 32B", "gemma31b": "Gemma 31B"}
 
     for ax, (model_name, df) in zip(axes, available.items()):
         layers_sorted = sorted(df["layer"].unique())
@@ -119,7 +119,7 @@ def figure1_heatmaps(dfs: dict[str, pd.DataFrame], config: Experiment8Config) ->
 _MODEL_SIZES = {
     "llama8b":   8,
     "gemma9b":   9,
-    "mistral24b": 24,
+    "qwen32b": 24,
     "gemma31b":  31,
     "llama70b":  70,
 }
@@ -137,7 +137,7 @@ def figure2_scaling_curve(
         peak = ex2_df["auroc"].max()
         points.append((8, peak, "Llama 8B"))
 
-    labels = {"mistral": ("mistral24b", "Mistral 24B"), "gemma31b": ("gemma31b", "Gemma 31B")}
+    labels = {"mistral": ("qwen32b", "Qwen 32B"), "gemma31b": ("gemma31b", "Gemma 31B")}
     for model_name, df in dfs.items():
         if df is None:
             continue
@@ -197,7 +197,7 @@ def figure3_accumulation_curves(
         _plot_model(ex2_df, "Llama 8B", colors[color_idx])
         color_idx += 1
 
-    model_labels = {"mistral": "Mistral 24B", "gemma31b": "Gemma 31B"}
+    model_labels = {"mistral": "Qwen 32B", "gemma31b": "Gemma 31B"}
     for model_name, df in dfs.items():
         if df is None:
             continue
@@ -245,7 +245,7 @@ def figure4_threshold_scatter(
         if pos is not None:
             points.append((8, pos, "Llama 8B"))
 
-    model_labels = {"mistral": ("Mistral 24B", 24), "gemma31b": ("Gemma 31B", 31)}
+    model_labels = {"mistral": ("Qwen 32B", 24), "gemma31b": ("Gemma 31B", 31)}
     for model_name, df in dfs.items():
         if df is None:
             continue
@@ -293,7 +293,7 @@ def figure5_probe_vs_perplexity(dfs: dict[str, pd.DataFrame], config: Experiment
     if n_models == 1:
         axes = [axes]
 
-    model_labels = {"mistral": "Mistral 24B", "gemma31b": "Gemma 31B"}
+    model_labels = {"mistral": "Qwen 32B", "gemma31b": "Gemma 31B"}
     colors = plt.cm.tab10.colors  # type: ignore[attr-defined]
 
     for ax, (model_name, df), color in zip(axes, available.items(), colors):

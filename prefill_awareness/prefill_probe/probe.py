@@ -80,7 +80,7 @@ def train_probe(
     """
     d_model = X_train.shape[1]
     n_train = X_train.shape[0]
-    device = torch.device("cpu")  # probes are small; CPU is fine
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Normalise features using training-set statistics
     mean, std = fit_normaliser(X_train)
@@ -147,7 +147,7 @@ def evaluate_probe(
     Evaluate probe on test data.
     Returns (balanced_accuracy, auroc, weight_norm).
     """
-    device = torch.device("cpu")
+    device = next(probe.parameters()).device
     X_s = apply_normaliser(X_test, mean, std)
     X_t = torch.tensor(X_s, dtype=torch.float32, device=device)
 

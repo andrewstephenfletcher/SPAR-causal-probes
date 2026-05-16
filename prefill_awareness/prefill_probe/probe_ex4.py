@@ -214,6 +214,10 @@ def train_probes_llama70b(
         with open(output_path) as f:
             return json.load(f)
 
+    if not (config.activations_dir_llama70b / "self_prefill.pt").exists():
+        print("  Llama 70B: activation files not found, skipping.")
+        return {}
+
     split_map = _build_split_map(responses)
     wd_grid = config.probe_regularisation_grid
     ppl_path = config.activations_dir_llama70b / "perplexity.json"
@@ -268,6 +272,10 @@ def train_probes_gemma31b(
         print(f"  Loading existing Gemma 31B probe results from {output_path}")
         with open(output_path) as f:
             return json.load(f)
+
+    if not (config.activations_dir_gemma31b / "self_prefill.pt").exists():
+        print("  Gemma 31B: activation files not found, skipping.")
+        return {}
 
     split_map = _build_split_map(responses)
     wd_grid = config.probe_regularisation_grid
@@ -397,6 +405,10 @@ def _train_probes_for_model(
         with open(output_path) as f:
             return json.load(f)
 
+    if not (activations_dir / "self_prefill.pt").exists():
+        print(f"  {model_name}: activation files not found, skipping.")
+        return {}
+
     split_map = _build_split_map(responses)
     wd_grid = config.probe_regularisation_grid
     ppl_path = activations_dir / "perplexity.json"
@@ -456,38 +468,38 @@ def train_probes_gemma4b(
     )
 
 
-def train_probes_mistral7b(
+def train_probes_qwen7b(
     responses: list[dict],
     config: Experiment4Config,
     force: bool = False,
 ) -> dict:
     return _train_probes_for_model(
-        model_name="mistral7b",
-        model_id=config.mistral7b_model_id,
-        activations_dir=config.activations_dir_mistral7b,
+        model_name="qwen7b",
+        model_id=config.qwen7b_model_id,
+        activations_dir=config.activations_dir_qwen7b,
         cross_conditions=[("cross_llama8b", "cross_llama8b.pt"),
                           ("cross_gemma9b",  "cross_gemma9b.pt")],
         responses=responses,
         config=config,
-        output_path=config.results_dir_ex4 / "probe_results_mistral7b.json",
+        output_path=config.results_dir_ex4 / "probe_results_qwen7b.json",
         force=force,
     )
 
 
-def train_probes_mistral24b(
+def train_probes_qwen32b(
     responses: list[dict],
     config: Experiment4Config,
     force: bool = False,
 ) -> dict:
     return _train_probes_for_model(
-        model_name="mistral24b",
-        model_id=config.mistral24b_model_id,
-        activations_dir=config.activations_dir_mistral24b,
+        model_name="qwen32b",
+        model_id=config.qwen32b_model_id,
+        activations_dir=config.activations_dir_qwen32b,
         cross_conditions=[("cross_llama8b", "cross_llama8b.pt"),
                           ("cross_gemma9b",  "cross_gemma9b.pt")],
         responses=responses,
         config=config,
-        output_path=config.results_dir_ex4 / "probe_results_mistral24b.json",
+        output_path=config.results_dir_ex4 / "probe_results_qwen32b.json",
         force=force,
     )
 
@@ -513,14 +525,14 @@ def train_all_probes(
     print("\n--- Probe training: Gemma 4 4B ---")
     gemma4b = train_probes_gemma4b(responses, config, force=force)
 
-    print("\n--- Probe training: Mistral 7B ---")
-    mistral7b = train_probes_mistral7b(responses, config, force=force)
+    print("\n--- Probe training: Qwen 7B ---")
+    qwen7b = train_probes_qwen7b(responses, config, force=force)
 
-    print("\n--- Probe training: Mistral Small 24B ---")
-    mistral24b = train_probes_mistral24b(responses, config, force=force)
+    print("\n--- Probe training: Qwen 32B ---")
+    qwen32b = train_probes_qwen32b(responses, config, force=force)
 
     return {
         "llama8b": llama8b, "llama70b": llama70b,
         "gemma4b": gemma4b, "gemma31b": gemma31b,
-        "mistral7b": mistral7b, "mistral24b": mistral24b,
+        "qwen7b": qwen7b, "qwen32b": qwen32b,
     }

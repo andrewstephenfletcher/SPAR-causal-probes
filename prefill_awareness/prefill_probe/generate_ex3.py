@@ -6,7 +6,7 @@ Five conditions per prompt:
   altered_self   — Llama 8B, temp=1.2, terse/direct system prompt
   gemma          — Gemma 2 9B, temp=0.6
   style_imitated — Gemma 2 9B, temp=0.6, few-shot prompt mimicking Llama's style
-  mistral        — Mistral 7B Instruct, temp=0.6
+  mistral        — Qwen 7B Instruct, temp=0.6
 
 For Alpaca prompts, `self` and `gemma` responses are REUSED from Experiment 1
 to avoid redundant computation.  All other conditions are generated fresh.
@@ -14,7 +14,7 @@ to avoid redundant computation.  All other conditions are generated fresh.
 Models are loaded and unloaded sequentially:
   1. Llama 8B  → self (new datasets), altered_self (all)
   2. Gemma 9B  → gemma (new datasets), style_imitated (all)
-  3. Mistral 7B → mistral (all)
+  3. Qwen 7B → mistral (all)
 
 Checkpoints are saved after each model so a crash doesn't lose hours of work.
 Final merged file: generations_dir_ex3 / "responses_all.json"
@@ -270,12 +270,12 @@ def _step_mistral(
     results: dict[str, dict],
     target_tokenizer,
 ) -> None:
-    """Load Mistral 7B and generate `mistral` for all prompts."""
-    print(f"  Loading Mistral 7B ({ex3_config.mistral_model_id})...")
+    """Load Qwen 7B and generate `mistral` for all prompts."""
+    print(f"  Loading Qwen 7B ({ex3_config.mistral_model_id})...")
     model, tokenizer = load_model_and_tokenizer(ex3_config.mistral_model_id)
     model.eval()
 
-    for prompt in tqdm(all_prompts, desc="Mistral 7B"):
+    for prompt in tqdm(all_prompts, desc="Qwen 7B"):
         pid = prompt["prompt_id"]
         instr = prompt["instruction"]
 
@@ -408,14 +408,14 @@ def generate_all_responses_ex3(
         print("  Step 2 (Gemma 9B): all responses already in checkpoint, skipping.")
 
     # ------------------------------------------------------------------
-    # Step 3: Mistral 7B (mistral)
+    # Step 3: Qwen 7B (mistral)
     # ------------------------------------------------------------------
     if any("mistral" not in results[p["prompt_id"]]["responses"] for p in all_prompts):
-        print("\n  === Step 3: Mistral 7B (mistral) ===")
+        print("\n  === Step 3: Qwen 7B (mistral) ===")
         _step_mistral(all_prompts, ex3_config, results, target_tokenizer)
         _save_checkpoint(results, ckpt_path)
     else:
-        print("  Step 3 (Mistral 7B): all responses already in checkpoint, skipping.")
+        print("  Step 3 (Qwen 7B): all responses already in checkpoint, skipping.")
 
     # ------------------------------------------------------------------
     # Filter: discard prompts where ANY condition is too short

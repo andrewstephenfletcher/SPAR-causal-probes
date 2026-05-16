@@ -75,19 +75,21 @@ def _format_generation_prompt(tokenizer, instruction: str, model_id: str) -> str
     )
 
 
-def _generate_response(
+def _generate_batch(
     model,
     tokenizer,
-    input_text: str,
+    input_texts: list[str],
     config: Experiment4Config,
-) -> str:
-    """Generate a single response and return the response text."""
+) -> list[str]:
+    """Generate responses for a batch of inputs and return response texts."""
     device = next(model.parameters()).device
-    inputs = tokenizer(input_text, return_tensors="pt").to(device)
+    inputs = tokenizer(
+        input_texts, return_tensors="pt", padding=True, truncation=False,
+    ).to(device)
 
     torch.manual_seed(config.seed)
     with torch.no_grad():
-        output = model.generate(
+        outputs = model.generate(
             **inputs,
             max_new_tokens=config.max_new_tokens,
             temperature=config.temperature,
@@ -95,9 +97,12 @@ def _generate_response(
             do_sample=True,
         )
 
-    n_input = inputs["input_ids"].shape[1]
-    response_ids = output[0][n_input:]
-    return tokenizer.decode(response_ids, skip_special_tokens=True)
+    results = []
+    for i, n_input in enumerate(inputs["attention_mask"].sum(dim=1).tolist()):
+        results.append(
+            tokenizer.decode(outputs[i][n_input:], skip_special_tokens=True)
+        )
+    return results
 
 
 def _count_tokens(tokenizer, text: str) -> int:
@@ -124,7 +129,7 @@ def generate_all_responses(
     output_path = config.generations_dir_ex4 / "responses.json"
     required_fields = ["response_llama8b", "response_gemma9b",
                        "response_llama70b", "response_gemma31b", "response_gemma4b",
-                       "response_mistral7b", "response_mistral24b"]
+                       "response_qwen7b", "response_qwen32b"]
 
     if output_path.exists() and not force:
         with open(output_path) as f:
@@ -188,6 +193,16 @@ def generate_all_responses(
             done_llama70b.add(int(pid))
         print(f"  Resuming Llama 70B generation from {len(done_llama70b)} / {len(prompts)}")
 
+    _llama70b_act_files = [
+        config.activations_dir_llama70b / "self_prefill.pt",
+        config.activations_dir_llama70b / "cross_llama8b.pt",
+        config.activations_dir_llama70b / "cross_gemma9b.pt",
+    ]
+    _skip_llama70b = all(p.exists() for p in _llama70b_act_files)
+    if _skip_llama70b:
+        print("  Llama 70B: activations already exist, skipping response generation.")
+        done_llama70b = {p["prompt_id"] for p in prompts}
+
     remaining_llama70b = [p for p in prompts if p["prompt_id"] not in done_llama70b]
     if remaining_llama70b:
         device_str = get_device()
@@ -195,16 +210,16 @@ def generate_all_responses(
         model, tokenizer = _load_model_and_tokenizer(config.llama70b_model_id)
         model.eval()
 
-        for prompt in tqdm(remaining_llama70b, desc="Llama 70B"):
-            pid = prompt["prompt_id"]
-            input_text = _format_generation_prompt(
-                tokenizer, prompt["instruction"], config.llama70b_model_id
-            )
-            response_text = _generate_response(model, tokenizer, input_text, config)
-            results[pid]["response_llama70b"] = response_text
-            done_llama70b.add(pid)
+        bs = config.batch_size
+        for batch_start in tqdm(range(0, len(remaining_llama70b), bs), desc="Llama 70B"):
+            batch = remaining_llama70b[batch_start : batch_start + bs]
+            input_texts = [_format_generation_prompt(tokenizer, p["instruction"], config.llama70b_model_id) for p in batch]
+            responses = _generate_batch(model, tokenizer, input_texts, config)
+            for prompt, response_text in zip(batch, responses):
+                pid = prompt["prompt_id"]
+                results[pid]["response_llama70b"] = response_text
+                done_llama70b.add(pid)
 
-            # Checkpoint every 20 prompts
             if len(done_llama70b) % 20 == 0:
                 partial_data = {str(p): results[p]["response_llama70b"]
                                 for p in done_llama70b}
@@ -246,14 +261,15 @@ def generate_all_responses(
         model, tokenizer = _load_model_and_tokenizer(config.gemma31b_model_id)
         model.eval()
 
-        for prompt in tqdm(remaining_gemma31b, desc="Gemma 31B"):
-            pid = prompt["prompt_id"]
-            input_text = _format_generation_prompt(
-                tokenizer, prompt["instruction"], config.gemma31b_model_id
-            )
-            response_text = _generate_response(model, tokenizer, input_text, config)
-            results[pid]["response_gemma31b"] = response_text
-            done_gemma31b.add(pid)
+        bs = config.batch_size
+        for batch_start in tqdm(range(0, len(remaining_gemma31b), bs), desc="Gemma 31B"):
+            batch = remaining_gemma31b[batch_start : batch_start + bs]
+            input_texts = [_format_generation_prompt(tokenizer, p["instruction"], config.gemma31b_model_id) for p in batch]
+            responses = _generate_batch(model, tokenizer, input_texts, config)
+            for prompt, response_text in zip(batch, responses):
+                pid = prompt["prompt_id"]
+                results[pid]["response_gemma31b"] = response_text
+                done_gemma31b.add(pid)
 
             if len(done_gemma31b) % 20 == 0:
                 partial_data = {str(p): results[p]["response_gemma31b"]
@@ -295,14 +311,15 @@ def generate_all_responses(
         model, tokenizer = _load_model_and_tokenizer(config.gemma4b_model_id)
         model.eval()
 
-        for prompt in tqdm(remaining_gemma4b, desc="Gemma 4B"):
-            pid = prompt["prompt_id"]
-            input_text = _format_generation_prompt(
-                tokenizer, prompt["instruction"], config.gemma4b_model_id
-            )
-            response_text = _generate_response(model, tokenizer, input_text, config)
-            results[pid]["response_gemma4b"] = response_text
-            done_gemma4b.add(pid)
+        bs = config.batch_size
+        for batch_start in tqdm(range(0, len(remaining_gemma4b), bs), desc="Gemma 4B"):
+            batch = remaining_gemma4b[batch_start : batch_start + bs]
+            input_texts = [_format_generation_prompt(tokenizer, p["instruction"], config.gemma4b_model_id) for p in batch]
+            responses = _generate_batch(model, tokenizer, input_texts, config)
+            for prompt, response_text in zip(batch, responses):
+                pid = prompt["prompt_id"]
+                results[pid]["response_gemma4b"] = response_text
+                done_gemma4b.add(pid)
 
             if len(done_gemma4b) % 20 == 0:
                 partial_data = {str(p): results[p]["response_gemma4b"]
@@ -319,11 +336,114 @@ def generate_all_responses(
         print(f"  Gemma 4B generation done ({len(done_gemma4b)} prompts).")
 
     # ------------------------------------------------------------------
-    # Filter: require all seven response fields and min token count
+    # Generate Qwen 7B responses (skip if already in results)
+    # ------------------------------------------------------------------
+    qwen7b_path = config.generations_dir_ex4 / "responses_qwen7b_partial.json"
+
+    done_qwen7b: set[int] = {
+        pid for pid, r in results.items() if "response_qwen7b" in r
+    }
+    if done_qwen7b:
+        print(f"  Qwen 7B: {len(done_qwen7b)} responses already present, skipping generation.")
+
+    if qwen7b_path.exists():
+        with open(qwen7b_path) as f:
+            partial = json.load(f)
+        for pid, text in partial.items():
+            results[int(pid)]["response_qwen7b"] = text
+            done_qwen7b.add(int(pid))
+        print(f"  Resuming Qwen 7B generation from {len(done_qwen7b)} / {len(prompts)}")
+
+    remaining_qwen7b = [p for p in prompts if p["prompt_id"] not in done_qwen7b]
+    if remaining_qwen7b:
+        device_str = get_device()
+        print(f"  Loading {config.qwen7b_model_id} on {device_str}...")
+        model, tokenizer = _load_model_and_tokenizer(config.qwen7b_model_id)
+        model.eval()
+
+        bs = config.batch_size
+        for batch_start in tqdm(range(0, len(remaining_qwen7b), bs), desc="Qwen 7B"):
+            batch = remaining_qwen7b[batch_start : batch_start + bs]
+            input_texts = [_format_generation_prompt(tokenizer, p["instruction"], config.qwen7b_model_id) for p in batch]
+            responses = _generate_batch(model, tokenizer, input_texts, config)
+            for prompt, response_text in zip(batch, responses):
+                pid = prompt["prompt_id"]
+                results[pid]["response_qwen7b"] = response_text
+                done_qwen7b.add(pid)
+
+            if len(done_qwen7b) % 20 == 0:
+                partial_data = {str(p): results[p]["response_qwen7b"]
+                                for p in done_qwen7b}
+                with open(qwen7b_path, "w") as f:
+                    json.dump(partial_data, f)
+
+        partial_data = {str(p): results[p]["response_qwen7b"] for p in done_qwen7b}
+        with open(qwen7b_path, "w") as f:
+            json.dump(partial_data, f)
+
+        del model
+        clear_device_cache()
+        print(f"  Qwen 7B generation done ({len(done_qwen7b)} prompts).")
+
+    # ------------------------------------------------------------------
+    # Generate Qwen 32B responses (skip if already in results)
+    # ------------------------------------------------------------------
+    qwen32b_path = config.generations_dir_ex4 / "responses_qwen32b_partial.json"
+
+    done_qwen32b: set[int] = {
+        pid for pid, r in results.items() if "response_qwen32b" in r
+    }
+    if done_qwen32b:
+        print(f"  Qwen 32B: {len(done_qwen32b)} responses already present, skipping generation.")
+
+    if qwen32b_path.exists():
+        with open(qwen32b_path) as f:
+            partial = json.load(f)
+        for pid, text in partial.items():
+            results[int(pid)]["response_qwen32b"] = text
+            done_qwen32b.add(int(pid))
+        print(f"  Resuming Qwen 32B generation from {len(done_qwen32b)} / {len(prompts)}")
+
+    remaining_qwen32b = [p for p in prompts if p["prompt_id"] not in done_qwen32b]
+    if remaining_qwen32b:
+        device_str = get_device()
+        print(f"  Loading {config.qwen32b_model_id} on {device_str}...")
+        model, tokenizer = _load_model_and_tokenizer(config.qwen32b_model_id)
+        model.eval()
+
+        bs = config.batch_size
+        for batch_start in tqdm(range(0, len(remaining_qwen32b), bs), desc="Qwen 32B"):
+            batch = remaining_qwen32b[batch_start : batch_start + bs]
+            input_texts = [_format_generation_prompt(tokenizer, p["instruction"], config.qwen32b_model_id) for p in batch]
+            responses = _generate_batch(model, tokenizer, input_texts, config)
+            for prompt, response_text in zip(batch, responses):
+                pid = prompt["prompt_id"]
+                results[pid]["response_qwen32b"] = response_text
+                done_qwen32b.add(pid)
+
+            if len(done_qwen32b) % 20 == 0:
+                partial_data = {str(p): results[p]["response_qwen32b"]
+                                for p in done_qwen32b}
+                with open(qwen32b_path, "w") as f:
+                    json.dump(partial_data, f)
+
+        partial_data = {str(p): results[p]["response_qwen32b"] for p in done_qwen32b}
+        with open(qwen32b_path, "w") as f:
+            json.dump(partial_data, f)
+
+        del model
+        clear_device_cache()
+        print(f"  Qwen 32B generation done ({len(done_qwen32b)} prompts).")
+
+    # ------------------------------------------------------------------
+    # Filter: require all response fields and min token count
+    # response_llama70b excluded when its activations already exist
     # ------------------------------------------------------------------
     required_fields = ["response_llama8b", "response_gemma9b",
-                       "response_llama70b", "response_gemma31b", "response_gemma4b",
-                       "response_mistral7b", "response_mistral24b"]
+                       "response_gemma31b", "response_gemma4b",
+                       "response_qwen7b", "response_qwen32b"]
+    if not _skip_llama70b:
+        required_fields.append("response_llama70b")
 
     print(f"  Filtering responses (min {config.min_response_tokens} tokens per response)...")
     print(f"  Loading Llama 8B tokenizer for token counting...")
@@ -335,10 +455,7 @@ def generate_all_responses(
         if not all(f in r for f in required_fields):
             discarded.append(pid)
             continue
-        min_n = min(
-            _count_tokens(ref_tokenizer, r[f])
-            for f in required_fields
-        )
+        min_n = min(_count_tokens(ref_tokenizer, r[f]) for f in required_fields)
         if min_n >= config.min_response_tokens:
             valid.append(r)
         else:
@@ -351,110 +468,19 @@ def generate_all_responses(
     print(f"  Retained {len(valid)} / {len(results)} prompts "
           f"(discarded {len(discarded)})")
 
+    if len(valid) == 0:
+        raise RuntimeError(
+            "generate_all_responses produced 0 valid records — "
+            "partial files have been kept for safety. "
+            "Check required_fields and min_response_tokens."
+        )
+
     with open(output_path, "w") as f:
         json.dump(valid, f, indent=2)
 
-    # ------------------------------------------------------------------
-    # Generate Mistral 7B responses (skip if already in results)
-    # ------------------------------------------------------------------
-    mistral7b_path = config.generations_dir_ex4 / "responses_mistral7b_partial.json"
-
-    done_mistral7b: set[int] = {
-        pid for pid, r in results.items() if "response_mistral7b" in r
-    }
-    if done_mistral7b:
-        print(f"  Mistral 7B: {len(done_mistral7b)} responses already present, skipping generation.")
-
-    if mistral7b_path.exists():
-        with open(mistral7b_path) as f:
-            partial = json.load(f)
-        for pid, text in partial.items():
-            results[int(pid)]["response_mistral7b"] = text
-            done_mistral7b.add(int(pid))
-        print(f"  Resuming Mistral 7B generation from {len(done_mistral7b)} / {len(prompts)}")
-
-    remaining_mistral7b = [p for p in prompts if p["prompt_id"] not in done_mistral7b]
-    if remaining_mistral7b:
-        device_str = get_device()
-        print(f"  Loading {config.mistral7b_model_id} on {device_str}...")
-        model, tokenizer = _load_model_and_tokenizer(config.mistral7b_model_id)
-        model.eval()
-
-        for prompt in tqdm(remaining_mistral7b, desc="Mistral 7B"):
-            pid = prompt["prompt_id"]
-            input_text = _format_generation_prompt(
-                tokenizer, prompt["instruction"], config.mistral7b_model_id
-            )
-            response_text = _generate_response(model, tokenizer, input_text, config)
-            results[pid]["response_mistral7b"] = response_text
-            done_mistral7b.add(pid)
-
-            if len(done_mistral7b) % 20 == 0:
-                partial_data = {str(p): results[p]["response_mistral7b"]
-                                for p in done_mistral7b}
-                with open(mistral7b_path, "w") as f:
-                    json.dump(partial_data, f)
-
-        partial_data = {str(p): results[p]["response_mistral7b"] for p in done_mistral7b}
-        with open(mistral7b_path, "w") as f:
-            json.dump(partial_data, f)
-
-        del model
-        clear_device_cache()
-        print(f"  Mistral 7B generation done ({len(done_mistral7b)} prompts).")
-
-    # ------------------------------------------------------------------
-    # Generate Mistral Small 24B responses (skip if already in results)
-    # ------------------------------------------------------------------
-    mistral24b_path = config.generations_dir_ex4 / "responses_mistral24b_partial.json"
-
-    done_mistral24b: set[int] = {
-        pid for pid, r in results.items() if "response_mistral24b" in r
-    }
-    if done_mistral24b:
-        print(f"  Mistral 24B: {len(done_mistral24b)} responses already present, skipping generation.")
-
-    if mistral24b_path.exists():
-        with open(mistral24b_path) as f:
-            partial = json.load(f)
-        for pid, text in partial.items():
-            results[int(pid)]["response_mistral24b"] = text
-            done_mistral24b.add(int(pid))
-        print(f"  Resuming Mistral 24B generation from {len(done_mistral24b)} / {len(prompts)}")
-
-    remaining_mistral24b = [p for p in prompts if p["prompt_id"] not in done_mistral24b]
-    if remaining_mistral24b:
-        device_str = get_device()
-        print(f"  Loading {config.mistral24b_model_id} on {device_str}...")
-        model, tokenizer = _load_model_and_tokenizer(config.mistral24b_model_id)
-        model.eval()
-
-        for prompt in tqdm(remaining_mistral24b, desc="Mistral 24B"):
-            pid = prompt["prompt_id"]
-            input_text = _format_generation_prompt(
-                tokenizer, prompt["instruction"], config.mistral24b_model_id
-            )
-            response_text = _generate_response(model, tokenizer, input_text, config)
-            results[pid]["response_mistral24b"] = response_text
-            done_mistral24b.add(pid)
-
-            if len(done_mistral24b) % 20 == 0:
-                partial_data = {str(p): results[p]["response_mistral24b"]
-                                for p in done_mistral24b}
-                with open(mistral24b_path, "w") as f:
-                    json.dump(partial_data, f)
-
-        partial_data = {str(p): results[p]["response_mistral24b"] for p in done_mistral24b}
-        with open(mistral24b_path, "w") as f:
-            json.dump(partial_data, f)
-
-        del model
-        clear_device_cache()
-        print(f"  Mistral 24B generation done ({len(done_mistral24b)} prompts).")
-
-    # Clean up partial checkpoints on success
+    # Clean up partial checkpoints only after a successful non-empty save
     for partial_file in [llama70b_path, gemma31b_path, gemma4b_path,
-                         mistral7b_path, mistral24b_path]:
+                         qwen7b_path, qwen32b_path]:
         if partial_file.exists():
             partial_file.unlink()
 

@@ -1,7 +1,7 @@
 """
 Probe training for Experiment 8 (Cross-Architecture Probing).
 
-Trains one LinearProbe per (layer, position) cell for Mistral 24B and
+Trains one LinearProbe per (layer, position) cell for Qwen 32B and
 Gemma 31B, using the same training procedure as Experiments 1 and 2.
 Also computes the cumulative perplexity baseline AUROC at each position.
 

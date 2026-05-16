@@ -66,7 +66,7 @@ def figure1_cosine_heatmap(results: dict, config: Experiment9Config) -> None:
             "truth_larger_than":  "Truth/Larger-Than",
             "eval_deploy":        "Eval↔Deploy",
             "permodel_gemma":     "Gemma 9B",
-            "permodel_mistral":   "Mistral 7B",
+            "permodel_mistral":   "Qwen 7B",
             "permodel_altered_self":    "Altered-Self",
             "permodel_style_imitated":  "Style-Imitated",
             "random\nbaseline":   "Random\nbaseline",
@@ -157,7 +157,7 @@ def figure2_pca_per_model(results: dict, config: Experiment9Config) -> None:
     cond_labels_pretty = {
         "altered_self":   "Altered-Self",
         "gemma":          "Gemma 9B",
-        "mistral":        "Mistral 7B",
+        "mistral":        "Qwen 7B",
         "style_imitated": "Style-Imitated",
     }
 
@@ -323,7 +323,7 @@ def figure4_pc1_variance(results: dict, config: Experiment9Config) -> None:
     cond_labels_pretty = {
         "altered_self":   "Altered-Self",
         "gemma":          "Gemma 9B",
-        "mistral":        "Mistral 7B",
+        "mistral":        "Qwen 7B",
         "style_imitated": "Style-Imitated",
     }
 

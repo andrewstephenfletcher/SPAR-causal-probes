@@ -28,7 +28,7 @@ from .probe_ex3 import CROSS_CONDITIONS, DATASETS, CONDITIONS
 _COND_LABELS = {
     "altered_self":   "Altered-self",
     "gemma":          "Gemma 9B",
-    "mistral":        "Mistral 7B",
+    "mistral":        "Qwen 7B",
     "style_imitated": "Style-imitated",
 }
 _DS_LABELS = {"alpaca": "Alpaca", "oasst1": "OASST1", "mmlu": "MMLU"}

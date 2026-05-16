@@ -83,7 +83,7 @@ def train_and_evaluate(
             return json.load(f)
 
     wd_grid = config.probe_regularisation_grid
-    cross_sources = config.cross_sources  # ["llama8b", "gemma31b", "mistral24b"]
+    cross_sources = config.cross_sources  # ["llama8b", "gemma31b", "qwen32b"]
     datasets = config.datasets            # ["bigcodebench", "oasst1", "gpqa"]
 
     # Condition label: "{cross_src}_{dataset}"

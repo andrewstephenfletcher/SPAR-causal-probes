@@ -132,9 +132,9 @@ class Experiment4Config:
     # Target models for this experiment
     llama70b_model_id:   str = "meta-llama/Llama-3.3-70B-Instruct"
     gemma31b_model_id:   str = "google/gemma-4-31b-it"
-    gemma4b_model_id:    str = "google/gemma-4-4b-it"
-    mistral24b_model_id: str = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
-    mistral7b_model_id:  str = "mistralai/Mistral-7B-Instruct-v0.3"
+    gemma4b_model_id:    str = "google/gemma-4-E4B-it"
+    qwen32b_model_id: str = "Qwen/Qwen2.5-32B-Instruct"
+    qwen7b_model_id:  str = "Qwen/Qwen2.5-7B-Instruct"
 
     # Source models whose responses are used as cross-model prefills
     llama8b_model_id: str = "meta-llama/Llama-3.1-8B-Instruct"
@@ -144,6 +144,7 @@ class Experiment4Config:
     temperature: float = 0.6
     top_p: float = 0.9
     max_new_tokens: int = 256
+    batch_size: int = 4
     seed: int = 42
 
     # Data
@@ -169,8 +170,8 @@ class Experiment4Config:
     activations_dir_llama70b:   Path = Path("outputs/experiment4/activations/llama70b")
     activations_dir_gemma31b:   Path = Path("outputs/experiment4/activations/gemma31b")
     activations_dir_gemma4b:    Path = Path("outputs/experiment4/activations/gemma4b")
-    activations_dir_mistral24b: Path = Path("outputs/experiment4/activations/mistral24b")
-    activations_dir_mistral7b:  Path = Path("outputs/experiment4/activations/mistral7b")
+    activations_dir_qwen32b: Path = Path("outputs/experiment4/activations/qwen32b")
+    activations_dir_qwen7b:  Path = Path("outputs/experiment4/activations/qwen7b")
     results_dir_ex4: Path = Path("outputs/experiment4/results")
 
     def __post_init__(self):
@@ -180,8 +181,8 @@ class Experiment4Config:
             self.activations_dir_llama70b,
             self.activations_dir_gemma31b,
             self.activations_dir_gemma4b,
-            self.activations_dir_mistral24b,
-            self.activations_dir_mistral7b,
+            self.activations_dir_qwen32b,
+            self.activations_dir_qwen7b,
             self.results_dir_ex4,
         ]:
             d.mkdir(parents=True, exist_ok=True)
@@ -535,7 +536,7 @@ class Experiment10Config:
     Cross-prefill sources:
         llama8b   — within-family (Llama 3.1 8B)
         gemma31b  — cross-family (Gemma 4 31B)
-        mistral24b — cross-family (Mistral Small 24B)
+        qwen32b — cross-family (Qwen 32B)
 
     Datasets:
         bigcodebench — programming tasks   (bigcode/bigcodebench, instruct_prompt)
@@ -548,19 +549,20 @@ class Experiment10Config:
     # Cross-prefill source models (responses fed into Llama 70B template)
     llama8b_model_id:   str = "meta-llama/Llama-3.1-8B-Instruct"
     gemma31b_model_id:  str = "google/gemma-4-31b-it"
-    mistral24b_model_id: str = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+    qwen32b_model_id: str = "Qwen/Qwen2.5-32B-Instruct"
 
     # Cross-source keys used throughout (must match response field names)
     cross_sources: List[str] = field(
-        default_factory=lambda: ["llama8b", "gemma31b", "mistral24b"]
+        default_factory=lambda: ["llama8b", "gemma31b", "qwen32b"]
     )
     datasets: List[str] = field(
         default_factory=lambda: ["bigcodebench", "oasst1", "gpqa"]
     )
 
     # Generation
-    n_prompts_per_dataset: int = 150
+    n_prompts_per_dataset: int = 50
     max_new_tokens: int = 512
+    batch_size: int = 4
     temperature: float = 0.6
     top_p: float = 0.9
     seed: int = 42

@@ -82,7 +82,15 @@ for dir in "${DATA_DIRS[@]}"; do
     "$src/" "$dst/"
 done
 
-# ── 5. rsync .env ─────────────────────────────────────────────────────────────
+# ── 5. override HF_HOME to container disk (network volume is too small) ───────
+echo "==> Setting HF_HOME to container disk"
+$SSH bash -s << 'ENDSSH'
+  if ! grep -q 'HF_HOME=/root/.cache/huggingface' ~/.bashrc 2>/dev/null; then
+    echo 'export HF_HOME=/root/.cache/huggingface' >> ~/.bashrc
+  fi
+ENDSSH
+
+# ── 6. rsync .env ─────────────────────────────────────────────────────────────
 if [ -f "$LOCAL_REPO/.env" ]; then
   echo "==> Syncing .env"
   rsync -az --no-owner --no-group \

@@ -231,28 +231,28 @@ def compute_all_perplexity(
         force=force,
     )
 
-    print("\n--- Perplexity: Mistral 7B ---")
+    print("\n--- Perplexity: Qwen 7B ---")
     _compute_perplexity_for_model(
-        target_model_id=config.mistral7b_model_id,
+        target_model_id=config.qwen7b_model_id,
         conditions={
-            "self_prefill":  "response_mistral7b",
+            "self_prefill":  "response_qwen7b",
             "cross_llama8b": "response_llama8b",
             "cross_gemma9b": "response_gemma9b",
         },
         responses=responses,
-        output_path=config.activations_dir_mistral7b / "perplexity.json",
+        output_path=config.activations_dir_qwen7b / "perplexity.json",
         force=force,
     )
 
-    print("\n--- Perplexity: Mistral Small 24B ---")
+    print("\n--- Perplexity: Qwen 32B ---")
     _compute_perplexity_for_model(
-        target_model_id=config.mistral24b_model_id,
+        target_model_id=config.qwen32b_model_id,
         conditions={
-            "self_prefill":  "response_mistral24b",
+            "self_prefill":  "response_qwen32b",
             "cross_llama8b": "response_llama8b",
             "cross_gemma9b": "response_gemma9b",
         },
         responses=responses,
-        output_path=config.activations_dir_mistral24b / "perplexity.json",
+        output_path=config.activations_dir_qwen32b / "perplexity.json",
         force=force,
     )
