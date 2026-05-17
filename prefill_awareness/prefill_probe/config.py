@@ -600,3 +600,102 @@ class Experiment10Config:
     def conditions(self) -> List[tuple[str, str]]:
         """All 9 (cross_source, dataset) training conditions."""
         return [(src, ds) for src in self.cross_sources for ds in self.datasets]
+
+
+@dataclass
+class Experiment11Config:
+    """
+    Experiment 11: Unified prefill-awareness data collection.
+
+    3 large target models × 4 conditions × 3 datasets × 100 prompts = 1200 records.
+    Key addition vs Exp 4: suffix normalisation eliminates the last-token confound.
+    Key addition vs Exp 10: token-position extraction at 3 layers (40/60/80% depth).
+
+    Target models (large — run inference + collect activations):
+        llama70b  — meta-llama/Llama-3.3-70B-Instruct  (80 layers)
+        gemma31b  — google/gemma-4-31b-it               (60 layers)
+        qwen32b   — Qwen/Qwen2.5-32B-Instruct           (detect at runtime)
+
+    Source models (small — text responses only):
+        llama8b   — meta-llama/Llama-3.1-8B-Instruct
+        gemma4b   — google/gemma-4-E4B-it
+        qwen7b    — Qwen/Qwen2.5-7B-Instruct
+
+    Conditions per target: self, cross_llama8b, cross_gemma4b, cross_qwen7b.
+    Datasets: bigcodebench, oasst1, gpqa (free-form, 100 prompts each).
+    """
+
+    # Large target models
+    llama70b_model_id: str = "meta-llama/Llama-3.3-70B-Instruct"
+    gemma31b_model_id: str = "google/gemma-4-31b-it"
+    qwen32b_model_id:  str = "Qwen/Qwen2.5-32B-Instruct"
+
+    # Small source models
+    llama8b_model_id: str = "meta-llama/Llama-3.1-8B-Instruct"
+    gemma4b_model_id: str = "google/gemma-4-E4B-it"
+    qwen7b_model_id:  str = "Qwen/Qwen2.5-7B-Instruct"
+
+    # Generation parameters
+    temperature: float = 0.6
+    top_p: float = 0.9
+    max_new_tokens: int = 512
+    batch_size: int = 4
+    seed: int = 42
+    min_response_tokens: int = 20
+
+    # Datasets and prompt counts
+    datasets: List[str] = field(
+        default_factory=lambda: ["bigcodebench", "oasst1", "gpqa"]
+    )
+    n_prompts_per_dataset: int = 100
+
+    # Split fractions (deterministic hash-based, same as Exp 10)
+    train_frac: float = 0.70
+    val_frac: float = 0.15
+
+    # Probe regularisation
+    probe_regularisation_grid: List[float] = field(
+        default_factory=lambda: [1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0]
+    )
+
+    # Checkpointing
+    checkpoint_interval: int = 20
+
+    # Output paths
+    output_dir:       Path = Path("outputs/experiment11")
+    generations_dir:  Path = Path("outputs/experiment11/generations")
+    activations_dir:  Path = Path("outputs/experiment11/activations")
+    analysis_dir:     Path = Path("outputs/experiment11/analysis")
+    metadata_dir:     Path = Path("outputs/experiment11/metadata")
+
+    def __post_init__(self):
+        for d in [
+            self.output_dir,
+            self.generations_dir,
+            self.activations_dir,
+            self.analysis_dir,
+            self.metadata_dir,
+        ]:
+            d.mkdir(parents=True, exist_ok=True)
+        # Per-target activation subdirectories are created at runtime.
+
+    @property
+    def target_models(self) -> List[tuple[str, str]]:
+        """[(key, model_id), ...] for large target models."""
+        return [
+            ("llama70b", self.llama70b_model_id),
+            ("gemma31b", self.gemma31b_model_id),
+            ("qwen32b",  self.qwen32b_model_id),
+        ]
+
+    @property
+    def source_models(self) -> List[tuple[str, str]]:
+        """[(key, model_id), ...] for small source models."""
+        return [
+            ("llama8b", self.llama8b_model_id),
+            ("gemma4b", self.gemma4b_model_id),
+            ("qwen7b",  self.qwen7b_model_id),
+        ]
+
+    def activations_dir_for(self, target_key: str) -> Path:
+        return self.activations_dir / target_key

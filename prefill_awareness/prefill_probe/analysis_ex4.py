@@ -116,6 +116,8 @@ def _figure_normalized_auroc(
     fig, ax = plt.subplots(figsize=(11, 5))
 
     for model_name in ("llama8b", "llama70b", "gemma4b", "gemma31b", "qwen7b", "qwen32b"):
+        if model_name not in all_results:
+            continue
         model_r = all_results[model_name]
         cond_name = PRIMARY_CROSS[model_name]
         if cond_name not in model_r.get("cross_conditions", {}):

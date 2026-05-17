@@ -67,6 +67,11 @@ DATA_DIRS=(
   "prefill_awareness/outputs"
 )
 
+$SSH bash -s "$REMOTE_REPO" "${DATA_DIRS[@]}" << 'ENDSSH'
+  REMOTE_REPO="$1"; shift
+  for dir in "$@"; do mkdir -p "$REMOTE_REPO/$dir"; done
+ENDSSH
+
 for dir in "${DATA_DIRS[@]}"; do
   src="$LOCAL_REPO/$dir"
   dst="$SSH_HOST:$REMOTE_REPO/$dir"
