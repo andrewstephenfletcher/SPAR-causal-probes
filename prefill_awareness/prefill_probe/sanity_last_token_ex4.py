@@ -68,9 +68,9 @@ def plot_last_token_distribution(config: Experiment4Config) -> None:
         "Llama 3.3 70B": "llama70b",
     }
     colors = {
-        "Llama 3.1 8B": "steelblue",
-        "Gemma 2 9B": "#E74C3C",
-        "Llama 3.3 70B": "darkorange",
+        "Llama 3.1 8B": "#F5A08A",  # Meta light
+        "Gemma 2 9B":   "#4285F4",  # Google
+        "Llama 3.3 70B": "#E8442A", # Meta
     }
 
     # Count last tokens per model

@@ -699,3 +699,108 @@ class Experiment11Config:
 
     def activations_dir_for(self, target_key: str) -> Path:
         return self.activations_dir / target_key
+
+
+@dataclass
+class Experiment11bConfig:
+    """
+    Experiment 11b: Probe training and analysis on Experiment 11 activations.
+
+    Consumes outputs from Experiment 11 (CPU-only, no inference required).
+    Produces depth curves, generalization matrices, token-position accumulation
+    curves, and summary statistics for the write-up (Sections 4.2–4.7).
+    """
+
+    # Points at Exp 11 outputs
+    exp11_activations_dir: Path = Path("outputs/experiment11/activations")
+    exp11_generations_dir: Path = Path("outputs/experiment11/generations")
+
+    # Model keys (must match Experiment11Config)
+    target_models: List[str] = field(
+        default_factory=lambda: ["llama70b", "gemma31b", "qwen32b"]
+    )
+    source_models: List[str] = field(
+        default_factory=lambda: ["llama8b", "gemma4b", "qwen7b"]
+    )
+    cross_conditions: List[str] = field(
+        default_factory=lambda: [
+            "cross_llama8b", "cross_gemma4b", "cross_qwen7b",
+            "cross_llama70b", "cross_gemma31b", "cross_qwen32b",
+        ]
+    )
+    datasets: List[str] = field(
+        default_factory=lambda: ["bigcodebench", "oasst1", "gpqa"]
+    )
+
+    # Probe training
+    probe_regularisation_grid: List[float] = field(
+        default_factory=lambda: [1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0]
+    )
+    seed: int = 42
+
+    # Output paths
+    output_dir:  Path = Path("outputs/experiment11b")
+    results_dir: Path = Path("outputs/experiment11b/results")
+    figures_dir: Path = Path("outputs/experiment11b/figures")
+    probes_dir:  Path = Path("outputs/experiment11b/probes")
+
+    def __post_init__(self):
+        for d in [self.output_dir, self.results_dir, self.figures_dir, self.probes_dir]:
+            d.mkdir(parents=True, exist_ok=True)
+
+    def cross_conditions_for(self, target_key: str) -> List[str]:
+        """Return cross conditions excluding the self-referential one for target_key."""
+        return [c for c in self.cross_conditions if c != f"cross_{target_key}"]
+
+
+@dataclass
+class Experiment11cConfig:
+    """
+    Experiment 11c: Norm-controlled probes.
+
+    Tests whether the abrupt AUROC step in Gemma 31B's depth curves (~60-70%
+    depth on within-family conditions) reflects genuine new computation or is
+    explained by residual stream norm growth.
+
+    Reuses Experiment 11 activation files. No model inference required.
+    """
+
+    # Points at Exp 11 outputs (same as 11b)
+    exp11_activations_dir: Path = Path("outputs/experiment11/activations")
+    exp11_generations_dir: Path = Path("outputs/experiment11/generations")
+
+    # Points at Exp 11b per-source results for comparison overlays
+    exp11b_results_dir: Path = Path("outputs/experiment11b/results")
+
+    target_models: List[str] = field(
+        default_factory=lambda: ["llama70b", "gemma31b", "qwen32b"]
+    )
+    source_models: List[str] = field(
+        default_factory=lambda: ["llama8b", "gemma4b", "qwen7b"]
+    )
+    cross_conditions: List[str] = field(
+        default_factory=lambda: [
+            "cross_llama8b", "cross_gemma4b", "cross_qwen7b",
+            "cross_llama70b", "cross_gemma31b", "cross_qwen32b",
+        ]
+    )
+    datasets: List[str] = field(
+        default_factory=lambda: ["bigcodebench", "oasst1", "gpqa"]
+    )
+
+    probe_regularisation_grid: List[float] = field(
+        default_factory=lambda: [1e-4, 1e-3, 1e-2, 1e-1, 1.0, 10.0]
+    )
+    seed: int = 42
+
+    output_dir:  Path = Path("outputs/experiment11c")
+    results_dir: Path = Path("outputs/experiment11c/results")
+    figures_dir: Path = Path("outputs/experiment11c/figures")
+
+    def __post_init__(self):
+        for d in [self.output_dir, self.results_dir, self.figures_dir]:
+            d.mkdir(parents=True, exist_ok=True)
+
+    def cross_conditions_for(self, target_key: str) -> List[str]:
+        """Return cross conditions excluding the self-referential one for target_key."""
+        return [c for c in self.cross_conditions if c != f"cross_{target_key}"]

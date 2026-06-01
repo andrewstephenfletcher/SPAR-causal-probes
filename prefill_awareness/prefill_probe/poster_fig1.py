@@ -37,14 +37,13 @@ MODEL_DISPLAY = {
     "qwen32b": "Qwen 32B",
 }
 
-# Purple for Llama, green for Gemma, orange/amber for Mistral
 MODEL_COLORS = {
-    "llama8b":   "#9B59B6",   # medium purple
-    "llama70b":  "#4A235A",   # dark purple
-    "gemma4b":   "#27AE60",   # medium green
-    "gemma31b":  "#145A32",   # dark green
-    "qwen7b":  "#E67E22",  # medium orange
-    "qwen32b": "#784212",  # dark orange/brown
+    "llama8b":   "#F5A08A",  # Meta light
+    "llama70b":  "#E8442A",  # Meta
+    "gemma4b":   "#7BAAF7",  # Google light
+    "gemma31b":  "#4285F4",  # Google
+    "qwen7b":    "#FFB07A",  # Qwen light
+    "qwen32b":   "#FF6A00",  # Qwen
 }
 
 # Primary cross-family condition used for the main scaling comparison

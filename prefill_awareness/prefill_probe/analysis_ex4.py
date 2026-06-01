@@ -47,12 +47,13 @@ MODEL_DISPLAY = {
 }
 
 MODEL_COLORS = {
-    "llama8b":   "steelblue",
-    "llama70b":  "darkorange",
-    "gemma4b":   "#27AE60",
-    "gemma31b":  "#145A32",
-    "qwen7b":  "#E67E22",
-    "qwen32b": "#784212",
+    "llama8b":   "#F5A08A",  # Meta light
+    "llama70b":  "#E8442A",  # Meta
+    "gemma4b":   "#7BAAF7",  # Google light
+    "gemma31b":  "#4285F4",  # Google
+    "gemma9b":   "#4285F4",  # Google (Gemma 2 9B, legacy)
+    "qwen7b":    "#FFB07A",  # Qwen light
+    "qwen32b":   "#FF6A00",  # Qwen
 }
 
 # Primary cross-family condition used for the main scaling comparison
@@ -309,16 +310,16 @@ def _figure_within_vs_cross_family(
 
     fig, ax = plt.subplots(figsize=(11, 5))
 
-    ax.plot(layers_cf, aurocs_cf, color="darkorange", linewidth=1.8, marker="s",
+    ax.plot(layers_cf, aurocs_cf, color=MODEL_COLORS["gemma9b"], linewidth=1.8, marker="s",
             markersize=3, label="Cross-family: vs. Gemma 9B")
-    ax.plot(layers_sf, aurocs_sf, color="steelblue", linewidth=1.8, marker="o",
+    ax.plot(layers_sf, aurocs_sf, color=MODEL_COLORS["llama8b"], linewidth=1.8, marker="o",
             markersize=3, label="Within-family: vs. Llama 8B")
 
     if ppl_cf is not None and not np.isnan(ppl_cf):
-        ax.axhline(ppl_cf, color="darkorange", linestyle="--", linewidth=1.0,
+        ax.axhline(ppl_cf, color=MODEL_COLORS["gemma9b"], linestyle="--", linewidth=1.0,
                    alpha=0.7, label=f"Perp. baseline cross-family ({ppl_cf:.3f})")
     if ppl_sf is not None and not np.isnan(ppl_sf):
-        ax.axhline(ppl_sf, color="steelblue", linestyle="--", linewidth=1.0,
+        ax.axhline(ppl_sf, color=MODEL_COLORS["llama8b"], linestyle="--", linewidth=1.0,
                    alpha=0.7, label=f"Perp. baseline within-family ({ppl_sf:.3f})")
 
     ax.axhline(0.5, color="gray", linestyle=":", linewidth=1.0, label="Chance (0.5)")

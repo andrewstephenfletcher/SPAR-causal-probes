@@ -110,7 +110,15 @@ def _validate(config: Experiment11Config) -> None:
     issues = []
     all_model_ids = dict(config.target_models + config.source_models)
     target_keys = [k for k, _ in config.target_models]
-    conditions = ["self", "cross_llama8b", "cross_gemma4b", "cross_qwen7b"]
+    # Per-target conditions: each target has 5 cross conditions (all 5 other models)
+    target_conditions = {
+        "llama70b": ["self", "cross_llama8b", "cross_gemma4b", "cross_qwen7b",
+                     "cross_gemma31b", "cross_qwen32b"],
+        "gemma31b": ["self", "cross_llama8b", "cross_gemma4b", "cross_qwen7b",
+                     "cross_llama70b", "cross_qwen32b"],
+        "qwen32b":  ["self", "cross_llama8b", "cross_gemma4b", "cross_qwen7b",
+                     "cross_llama70b", "cross_gemma31b"],
+    }
 
     # 1. Response files
     total_responses = 0
@@ -138,9 +146,12 @@ def _validate(config: Experiment11Config) -> None:
 
     # 2. Activation files
     total_act_files = 0
+    expected_act = 0
     for target_key in target_keys:
         act_dir = config.activations_dir_for(target_key)
-        for cond in conditions:
+        t_conditions = target_conditions.get(target_key, [])
+        expected_act += len(t_conditions) * len(config.datasets) * 2
+        for cond in t_conditions:
             cond_dir = act_dir / cond
             for ds in config.datasets:
                 for suffix in ["", "_token_positions"]:
@@ -156,8 +167,6 @@ def _validate(config: Experiment11Config) -> None:
                                 issues.append(f"Empty activation file: {path}")
                         except Exception as e:
                             issues.append(f"Cannot load {path}: {e}")
-
-    expected_act = len(target_keys) * len(conditions) * len(config.datasets) * 2
     print(f"  Activation files found: {total_act_files} / {expected_act}")
 
     # 3. Summary
