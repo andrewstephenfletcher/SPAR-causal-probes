@@ -33,7 +33,9 @@ No model inference; CPU-only.
 
 import argparse
 import json
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 _here = Path(__file__).resolve().parent.parent
@@ -92,6 +94,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Overwrite existing results (default: skip if output JSON exists).",
     )
+    parser.add_argument(
+        "--backup",
+        action="store_true",
+        help=(
+            "Before running (especially with --force), copy existing results/, "
+            "figures/ and probes/ to a timestamped backup directory."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -109,6 +119,17 @@ def main() -> None:
     print(f"  Results:  {config.results_dir.resolve()}")
     print(f"  Figures:  {config.figures_dir.resolve()}")
     print(f"  Force:    {args.force}")
+
+    if args.backup:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_root = config.output_dir.parent / f"experiment11b_backup_{ts}"
+        backup_root.mkdir(parents=True, exist_ok=True)
+        for subdir in ("results", "figures", "probes"):
+            src = config.output_dir / subdir
+            if src.exists():
+                shutil.copytree(src, backup_root / subdir)
+                print(f"  Backed up {subdir}/ → {backup_root / subdir}")
+        print(f"  Backup complete → {backup_root}")
 
     # Determine which analyses to run, in execution order
     requested = set(args.analyses) if args.analyses else set(_ANALYSIS_NAMES.keys())
