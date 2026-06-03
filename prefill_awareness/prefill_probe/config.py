@@ -389,7 +389,7 @@ class Experiment9Config:
     eval_deploy_neutral_message: str = "Hello, can you help me?"
 
     # Paths: Geometry of Truth datasets (relative to prefill_awareness/ working dir)
-    got_datasets_dir: Path = Path("../dct_probes/geometry-of-truth/datasets")
+    got_datasets_dir: Path = Path("../dct_probes/data/got_datasets")
 
     # Paths: inputs from earlier experiments
     ex1_activations_dir: Path = Path("outputs/experiment1/activations")
