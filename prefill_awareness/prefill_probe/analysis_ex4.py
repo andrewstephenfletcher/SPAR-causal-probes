@@ -47,13 +47,13 @@ MODEL_DISPLAY = {
 }
 
 MODEL_COLORS = {
-    "llama8b":   "#F5A08A",  # Meta light
-    "llama70b":  "#E8442A",  # Meta
+    "llama8b":   "#A569BD",  # purple light
+    "llama70b":  "#6C3483",  # purple
     "gemma4b":   "#7BAAF7",  # Google light
     "gemma31b":  "#4285F4",  # Google
     "gemma9b":   "#4285F4",  # Google (Gemma 2 9B, legacy)
-    "qwen7b":    "#FFB07A",  # Qwen light
-    "qwen32b":   "#FF6A00",  # Qwen
+    "qwen7b":    "#F0B27A",  # amber light
+    "qwen32b":   "#E67E22",  # amber
 }
 
 # Primary cross-family condition used for the main scaling comparison

@@ -664,7 +664,10 @@ def analysis_cross_model(
             for c in config.cross_conditions_for(target)
             if c in _all_cond_to_source
         }
-        source_keys = list(cond_to_source.values())
+        source_keys = sorted(
+            cond_to_source.values(),
+            key=lambda k: _FAMILY_ORDER.index(k) if k in _FAMILY_ORDER else 99,
+        )
 
         opt_layer = _optimal_layer(target, depth_results or {}, config)
         print(f"  {target}: using layer {opt_layer}")
@@ -1025,25 +1028,44 @@ _COND_SOURCE_DISPLAY = {
     "pooled":         "Pooled (all sources)",
 }
 
+# One colour per family; solid = large model, dashed = small model
 _COND_COLORS = {
-    "cross_llama8b":  MODEL_COLORS["llama8b"],   # Meta light
-    "cross_gemma4b":  MODEL_COLORS["gemma4b"],   # Google light
-    "cross_qwen7b":   MODEL_COLORS["qwen7b"],    # Qwen light
-    "cross_llama70b": MODEL_COLORS["llama70b"],  # Meta dark
-    "cross_gemma31b": MODEL_COLORS["gemma31b"],  # Google dark
-    "cross_qwen32b":  MODEL_COLORS["qwen32b"],   # Qwen dark
+    "cross_gemma4b":  MODEL_COLORS["gemma31b"],  # Google blue
+    "cross_gemma31b": MODEL_COLORS["gemma31b"],  # Google blue
+    "cross_llama8b":  MODEL_COLORS["llama70b"],  # purple
+    "cross_llama70b": MODEL_COLORS["llama70b"],  # purple
+    "cross_qwen7b":   MODEL_COLORS["qwen32b"],   # amber
+    "cross_qwen32b":  MODEL_COLORS["qwen32b"],   # amber
     "pooled":         "dimgray",
 }
 
 _COND_LINESTYLES = {
-    "cross_llama8b":  "-",
-    "cross_gemma4b":  "-",
-    "cross_qwen7b":   "-",
-    "cross_llama70b": "--",
-    "cross_gemma31b": "--",
-    "cross_qwen32b":  "--",
+    "cross_gemma4b":  "--",               # small → dashed
+    "cross_gemma31b": "-",                # large → solid
+    "cross_llama8b":  "--",               # small → dashed
+    "cross_llama70b": "-",                # large → solid
+    "cross_qwen7b":   "--",               # small → dashed
+    "cross_qwen32b":  "-",                # large → solid
     "pooled":         (0, (3, 1, 1, 1)),
 }
+
+_COND_LINEWIDTHS = {
+    "cross_gemma4b":  1.4,
+    "cross_gemma31b": 2.0,
+    "cross_llama8b":  1.4,
+    "cross_llama70b": 2.0,
+    "cross_qwen7b":   1.4,
+    "cross_qwen32b":  2.0,
+    "pooled":         1.4,
+}
+
+# Family-grouped legend order
+_COND_LEGEND_ORDER = [
+    "cross_gemma4b", "cross_gemma31b",
+    "cross_llama8b", "cross_llama70b",
+    "cross_qwen7b",  "cross_qwen32b",
+    "pooled",
+]
 
 
 def analysis_per_source_depth_curves(
@@ -1130,29 +1152,36 @@ def analysis_per_source_depth_curves(
             # ---- Plot ----
             rel = [l / (n_layers - 1) for l in range(n_layers)]
 
-            for cond in config.cross_conditions_for(target):
-                if cond not in ds_result:
-                    continue
-                ax.plot(
-                    rel, ds_result[cond]["lr_auroc"],
-                    color=_COND_COLORS[cond],
-                    linestyle=_COND_LINESTYLES[cond],
-                    linewidth=1.8,
-                    label=_COND_SOURCE_DISPLAY.get(cond, cond),
-                )
-
-            # Overlay pooled curve from Analysis 1 if available
+            # Load pooled curve first so it can be included in the legend dict
             pooled_path = config.results_dir / "depth_curves" / f"{target}_{ds}.json"
+            pooled_auroc = None
             if pooled_path.exists():
                 with open(pooled_path) as f:
-                    pooled = json.load(f)
-                ax.plot(
-                    rel, pooled["lr_auroc"],
-                    color=_COND_COLORS["pooled"],
-                    linestyle=_COND_LINESTYLES["pooled"],
-                    linewidth=1.4,
-                    label=_COND_SOURCE_DISPLAY["pooled"],
-                )
+                    pooled_auroc = json.load(f)["lr_auroc"]
+
+            # Build {cond: line_handle} in legend order, skipping absent conds
+            legend_handles, legend_labels = [], []
+            for cond in _COND_LEGEND_ORDER:
+                if cond == "pooled":
+                    if pooled_auroc is None:
+                        continue
+                    (line,) = ax.plot(
+                        rel, pooled_auroc,
+                        color=_COND_COLORS["pooled"],
+                        linestyle=_COND_LINESTYLES["pooled"],
+                        linewidth=_COND_LINEWIDTHS["pooled"],
+                    )
+                else:
+                    if cond not in ds_result:
+                        continue
+                    (line,) = ax.plot(
+                        rel, ds_result[cond]["lr_auroc"],
+                        color=_COND_COLORS[cond],
+                        linestyle=_COND_LINESTYLES[cond],
+                        linewidth=_COND_LINEWIDTHS[cond],
+                    )
+                legend_handles.append(line)
+                legend_labels.append(_COND_SOURCE_DISPLAY.get(cond, cond))
 
             ax.axhline(0.5, linestyle=":", color="lightgray", linewidth=1)
             ax.set_xlim(0, 1)
@@ -1161,7 +1190,7 @@ def analysis_per_source_depth_curves(
             if ax is axes[0]:
                 ax.set_ylabel("AUROC (test)", fontsize=11)
             ax.set_title(ds, fontsize=12)
-            ax.legend(fontsize=8)
+            ax.legend(legend_handles, legend_labels, fontsize=8, loc="lower right")
             ax.grid(axis="y", alpha=0.3)
 
         fig.suptitle(
@@ -1171,6 +1200,252 @@ def analysis_per_source_depth_curves(
         fig.tight_layout()
         _save_fig(fig, fig_dir / f"per_source_depth_curves_{target}")
         print(f"  Figure saved → per_source_depth_curves_{target}.pdf/png")
+
+
+# ---------------------------------------------------------------------------
+# Analysis 10: Joint Cross-Model × Cross-Dataset Generalization
+# ---------------------------------------------------------------------------
+
+def analysis_joint_generalization(
+    config: Experiment11bConfig,
+    depth_results: dict | None = None,
+    force: bool = False,
+) -> None:
+    """
+    Joint cross-model × cross-dataset generalization (Analysis 10).
+
+    For each target model, runs 3-fold CV over datasets:
+      - Hold out one dataset as the test domain
+      - Train probe: self vs. cross_{train_src} on the 2 non-heldout datasets
+        (using their built-in train/val splits for regularisation selection)
+      - Test probe: self vs. cross_{test_src} on ALL records from the held-out dataset
+
+    The diagonal (train_src == test_src) is a pure cross-dataset transfer control;
+    the off-diagonal cells are the joint cross-model × cross-dataset test.
+
+    Produces per-target:
+      - results/joint_generalization/{target}.json
+          {fold_results, mean_matrix, std_matrix, mean_off_diagonal}
+      - figures/joint_gen_mean_{target}.png/pdf   — mean heatmap (primary)
+      - figures/joint_gen_folds_{target}.png/pdf  — 3-panel per-fold breakdown (secondary)
+    """
+    out_dir = config.results_dir / "joint_generalization"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fig_dir = config.figures_dir
+
+    print("\n=== Analysis 10: Joint Cross-Model × Cross-Dataset Generalization ===")
+
+    _all_cond_to_source = {
+        "cross_llama8b":  "llama8b",
+        "cross_gemma4b":  "gemma4b",
+        "cross_qwen7b":   "qwen7b",
+        "cross_llama70b": "llama70b",
+        "cross_gemma31b": "gemma31b",
+        "cross_qwen32b":  "qwen32b",
+    }
+
+    datasets = config.datasets
+
+    for target in config.target_models:
+        out_path = out_dir / f"{target}.json"
+        if not force and _json_exists(out_path):
+            print(f"[joint_generalization] {target}: already complete.")
+            continue
+
+        cond_to_source = {
+            c: _all_cond_to_source[c]
+            for c in config.cross_conditions_for(target)
+            if c in _all_cond_to_source
+        }
+        source_keys = sorted(
+            cond_to_source.values(),
+            key=lambda k: _FAMILY_ORDER.index(k) if k in _FAMILY_ORDER else 99,
+        )
+        source_to_cond = {v: k for k, v in cond_to_source.items()}
+
+        opt_layer = _optimal_layer(target, depth_results or {}, config)
+        print(f"  {target}: layer {opt_layer}, {len(source_keys)} cross-sources")
+
+        # Pre-load all activations: self[ds] and cross[src][ds]
+        self_acts: dict[str, list[dict]] = {
+            ds: load_activations_ex11(target, "self", ds, config)
+            for ds in datasets
+        }
+        cross_acts: dict[str, dict[str, list[dict]]] = {
+            sk: {
+                ds: load_activations_ex11(target, source_to_cond[sk], ds, config)
+                for ds in datasets
+            }
+            for sk in source_keys
+        }
+        split_maps: dict[str, dict[int, str]] = {
+            ds: get_split_map(target, ds, config) for ds in datasets
+        }
+
+        fold_results: dict[str, dict[str, dict[str, float]]] = {}
+
+        for held_out_ds in datasets:
+            train_dsets = [ds for ds in datasets if ds != held_out_ds]
+            print(f"  {target} | held-out: {held_out_ds} | train: {train_dsets}")
+
+            fold_matrix: dict[str, dict[str, float]] = {sk: {} for sk in source_keys}
+
+            for train_src in source_keys:
+                # Merge 2 training datasets (offset prompt_ids to avoid collision)
+                def _merge(lists: list[list[dict]]) -> list[dict]:
+                    out = []
+                    for i, lst in enumerate(lists):
+                        for r in lst:
+                            out.append({**r, "prompt_id": r["prompt_id"] + i * 10000})
+                    return out
+
+                self_train   = _merge([self_acts[ds]            for ds in train_dsets])
+                cross_train  = _merge([cross_acts[train_src][ds] for ds in train_dsets])
+                split_merged = {
+                    pid + i * 10000: sp
+                    for i, ds in enumerate(train_dsets)
+                    for pid, sp in split_maps[ds].items()
+                }
+
+                train_ds_splits = build_dataset_per_source(
+                    self_train, cross_train, split_merged, opt_layer
+                )
+                X_train, y_train = train_ds_splits["train"]["X"], train_ds_splits["train"]["y"]
+                X_val,   y_val   = train_ds_splits["val"]["X"],   train_ds_splits["val"]["y"]
+
+                if len(X_train) < 4 or len(X_val) < 2 or len(np.unique(y_train)) < 2:
+                    for test_src in source_keys:
+                        fold_matrix[train_src][test_src] = float("nan")
+                    continue
+
+                probe, mean, std, _, _ = train_probe(
+                    X_train, y_train, X_val, y_val, config.probe_regularisation_grid
+                )
+
+                for test_src in source_keys:
+                    # Test on ALL records from held-out dataset (ignore split assignment)
+                    self_test  = self_acts[held_out_ds]
+                    cross_test = cross_acts[test_src][held_out_ds]
+                    common_pids = get_common_prompt_ids([self_test, cross_test])
+                    self_by_pid  = {r["prompt_id"]: r for r in self_test}
+                    cross_by_pid = {r["prompt_id"]: r for r in cross_test}
+
+                    X_test_list, y_test_list = [], []
+                    for pid in common_pids:
+                        X_test_list.append(
+                            self_by_pid[pid]["layer_activations"][opt_layer].astype(np.float32)
+                        )
+                        y_test_list.append(0)
+                        X_test_list.append(
+                            cross_by_pid[pid]["layer_activations"][opt_layer].astype(np.float32)
+                        )
+                        y_test_list.append(1)
+
+                    if len(X_test_list) < 2:
+                        fold_matrix[train_src][test_src] = float("nan")
+                        continue
+
+                    X_test = np.stack(X_test_list)
+                    y_test = np.array(y_test_list, dtype=int)
+
+                    if len(np.unique(y_test)) < 2:
+                        fold_matrix[train_src][test_src] = float("nan")
+                        continue
+
+                    _, auroc, _ = evaluate_probe(probe, mean, std, X_test, y_test)
+                    fold_matrix[train_src][test_src] = float(auroc)
+                    print(
+                        f"    heldout={held_out_ds} train={train_src} test={test_src}: "
+                        f"AUROC={auroc:.4f}"
+                    )
+
+            fold_results[held_out_ds] = fold_matrix
+
+        # Aggregate mean ± std over the 3 folds
+        mean_matrix: dict[str, dict[str, float]] = {sk: {} for sk in source_keys}
+        std_matrix:  dict[str, dict[str, float]] = {sk: {} for sk in source_keys}
+        for train_src in source_keys:
+            for test_src in source_keys:
+                vals = [
+                    fold_results[ds][train_src].get(test_src, float("nan"))
+                    for ds in datasets
+                ]
+                valid = [v for v in vals if not np.isnan(v)]
+                mean_matrix[train_src][test_src] = float(np.mean(valid)) if valid else float("nan")
+                std_matrix[train_src][test_src]  = (
+                    float(np.std(valid)) if len(valid) > 1 else float("nan")
+                )
+
+        result = {
+            "target":            target,
+            "opt_layer":         opt_layer,
+            "source_keys":       source_keys,
+            "datasets":          datasets,
+            "fold_results":      fold_results,
+            "mean_matrix":       mean_matrix,
+            "std_matrix":        std_matrix,
+            "mean_off_diagonal": _mean_off_diagonal(mean_matrix, source_keys),
+        }
+        with open(out_path, "w") as f:
+            json.dump(result, f, indent=2)
+
+        src_labels = [_DISPLAY.get(sk, sk) for sk in source_keys]
+
+        # Primary figure: mean AUROC heatmap (same style as Analysis 6)
+        _plot_heatmap(
+            mean_matrix, source_keys,
+            title=f"Joint generalization (mean ± std over dataset folds) — "
+                  f"{_DISPLAY.get(target, target)}",
+            path_stem=fig_dir / f"joint_gen_mean_{target}",
+            labels=src_labels,
+        )
+
+        # Secondary figure: one heatmap per held-out dataset
+        n_ds = len(datasets)
+        fig, axes = plt.subplots(
+            1, n_ds, figsize=(5 * n_ds + 1, 5), constrained_layout=True
+        )
+        axes_list = list(axes) if n_ds > 1 else [axes]
+        last_im = None
+        for ax, held_out_ds in zip(axes_list, datasets):
+            matrix = fold_results[held_out_ds]
+            n = len(source_keys)
+            data = np.full((n, n), np.nan)
+            for i, k1 in enumerate(source_keys):
+                for j, k2 in enumerate(source_keys):
+                    v = matrix.get(k1, {}).get(k2)
+                    if v is not None and not np.isnan(v):
+                        data[i, j] = v
+            last_im = ax.imshow(data, vmin=0.5, vmax=1.0, cmap="RdYlGn", aspect="auto")
+            for i in range(n):
+                for j in range(n):
+                    if not np.isnan(data[i, j]):
+                        ax.text(j, i, f"{data[i, j]:.2f}", ha="center", va="center",
+                                fontsize=9, color="black")
+            ax.set_xticks(range(n))
+            ax.set_xticklabels(src_labels, rotation=30, ha="right", fontsize=8)
+            ax.set_yticks(range(n))
+            ax.set_yticklabels(src_labels, fontsize=8)
+            ax.set_title(f"Held-out: {_DS_SHORT.get(held_out_ds, held_out_ds)}", fontsize=11)
+            ax.set_xlabel("Test source", fontsize=10)
+            if ax is axes_list[0]:
+                ax.set_ylabel("Train source", fontsize=10)
+
+        if last_im is not None:
+            cbar = fig.colorbar(last_im, ax=axes_list, shrink=0.75, pad=0.03)
+            cbar.set_label("AUROC", fontsize=10)
+
+        fig.suptitle(
+            f"Joint generalization (per fold) — {_DISPLAY.get(target, target)}",
+            fontsize=14,
+        )
+        _save_fig(fig, fig_dir / f"joint_gen_folds_{target}")
+        print(
+            f"  {target}: mean off-diagonal AUROC = "
+            f"{result['mean_off_diagonal']:.4f}"
+        )
+
+    print("  Analysis 10 complete.")
 
 
 def _mean_off_diagonal(matrix: dict, keys: list[str]) -> float:
@@ -1233,10 +1508,16 @@ _DS_SHORT = {
 }
 
 _SRC_SHORT = {
-    "llama8b": "Llama\n3.1 8B",
-    "gemma4b": "Gemma\n4 4B",
-    "qwen7b":  "Qwen\n2.5 7B",
+    "gemma4b":  "Gemma\n4 4B",
+    "gemma31b": "Gemma\n4 31B",
+    "llama8b":  "Llama\n3.1 8B",
+    "llama70b": "Llama\n3.3 70B",
+    "qwen7b":   "Qwen\n2.5 7B",
+    "qwen32b":  "Qwen\n2.5 32B",
 }
+
+# Canonical family-sorted order for cross-model axes
+_FAMILY_ORDER = ["gemma4b", "gemma31b", "llama8b", "llama70b", "qwen7b", "qwen32b"]
 
 
 def _plot_combined_heatmaps(
@@ -1246,9 +1527,9 @@ def _plot_combined_heatmaps(
     tick_labels: list[str],
     title: str,
     path_stem: Path,
+    per_panel_keys: dict[str, tuple[list[str], list[str]]] | None = None,
 ) -> None:
     n_targets = len(targets)
-    n = len(keys)
     fig, axes = plt.subplots(
         1, n_targets, figsize=(5 * n_targets + 1, 5), constrained_layout=True
     )
@@ -1267,10 +1548,15 @@ def _plot_combined_heatmaps(
 
     last_im = None
     for ax, target in zip(axes_list, targets):
+        panel_keys, panel_labels = (
+            per_panel_keys[target] if per_panel_keys and target in per_panel_keys
+            else (keys, tick_labels)
+        )
+        n = len(panel_keys)
         matrix = matrices.get(target, {})
         data = np.full((n, n), np.nan)
-        for i, k1 in enumerate(keys):
-            for j, k2 in enumerate(keys):
+        for i, k1 in enumerate(panel_keys):
+            for j, k2 in enumerate(panel_keys):
                 v = matrix.get(k1, {}).get(k2)
                 if v is not None:
                     data[i, j] = float(v)
@@ -1289,9 +1575,9 @@ def _plot_combined_heatmaps(
                             fontsize=11, fontweight="bold", color=text_color)
 
         ax.set_xticks(range(n))
-        ax.set_xticklabels(tick_labels, fontsize=10)
+        ax.set_xticklabels(panel_labels, fontsize=10)
         ax.set_yticks(range(n))
-        ax.set_yticklabels(tick_labels, fontsize=10)
+        ax.set_yticklabels(panel_labels, fontsize=10)
         ax.set_title(_DISPLAY.get(target, target), fontsize=13, fontweight="bold", pad=8)
         ax.set_xlabel("Test", fontsize=11)
         if ax is axes_list[0]:
@@ -1304,6 +1590,71 @@ def _plot_combined_heatmaps(
 
     fig.suptitle(title, fontsize=15, fontweight="bold")
     _save_fig(fig, path_stem)
+
+
+def analysis_blog_depth_curves(config: Experiment11bConfig, force: bool = False) -> None:
+    """
+    Combined 1×3 blog depth-curve figure: one panel per dataset, all 3 target models
+    overlaid, LR AUROC only.  Family order: Gemma → Llama → Qwen.
+    Output: figures/blog_depth_curves.png/pdf
+    """
+    fig_dir = config.figures_dir
+    out_png = fig_dir / "blog_depth_curves.png"
+    if not force and out_png.exists():
+        print("[blog_depth_curves] Already exists.")
+        return
+
+    print("\n=== Blog Depth Curves (combined 1×3) ===")
+
+    _TARGET_COLORS = {
+        "gemma31b": MODEL_COLORS["gemma31b"],
+        "llama70b": MODEL_COLORS["llama70b"],
+        "qwen32b":  MODEL_COLORS["qwen32b"],
+    }
+    ordered_targets = ["gemma31b", "llama70b", "qwen32b"]
+
+    # Load cached depth-curve results
+    dc_dir = config.results_dir / "depth_curves"
+    results: dict[str, dict[str, dict]] = {}
+    for target in ordered_targets:
+        results[target] = {}
+        for ds in config.datasets:
+            path = dc_dir / f"{target}_{ds}.json"
+            if not path.exists():
+                print(f"  WARNING: {path} not found — run analysis 1 first.")
+                return
+            with open(path) as f:
+                results[target][ds] = json.load(f)
+
+    n_ds = len(config.datasets)
+    fig, axes = plt.subplots(1, n_ds, figsize=(5 * n_ds + 1, 4.5),
+                             sharey=True, constrained_layout=True)
+    axes_list = list(axes)
+
+    for ax, ds in zip(axes_list, config.datasets):
+        for target in ordered_targets:
+            res = results[target][ds]
+            n_layers = res["n_layers"]
+            rel = [l / (n_layers - 1) for l in res["layers"]]
+            ax.plot(rel, res["lr_auroc"],
+                    color=_TARGET_COLORS[target],
+                    linewidth=2.0,
+                    label=_DISPLAY.get(target, target))
+
+        ax.axhline(0.5, linestyle=":", color="lightgray", linewidth=1)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0.35, 1.05)
+        ax.set_xlabel("Relative layer depth", fontsize=11)
+        ax.set_title(_DS_SHORT.get(ds, ds), fontsize=12, fontweight="bold")
+        ax.grid(axis="y", alpha=0.3)
+        if ax is axes_list[0]:
+            ax.set_ylabel("AUROC (test)", fontsize=11)
+            ax.legend(fontsize=9, loc="lower right")
+
+    fig.suptitle("Depth curves — LR probe AUROC by dataset",
+                 fontsize=14, fontweight="bold")
+    _save_fig(fig, fig_dir / "blog_depth_curves")
+    print("  Saved → blog_depth_curves.png/pdf")
 
 
 def analysis_blog_heatmaps(config: Experiment11bConfig, force: bool = False) -> None:
@@ -1329,8 +1680,8 @@ def analysis_blog_heatmaps(config: Experiment11bConfig, force: bool = False) -> 
         (
             "cross_model",
             "cross_model_{target}.json",
-            ["llama8b", "gemma4b", "qwen7b"],
-            [_SRC_SHORT[s] for s in ["llama8b", "gemma4b", "qwen7b"]],
+            _FAMILY_ORDER,
+            [_SRC_SHORT[s] for s in _FAMILY_ORDER],
             "Cross-source generalisation",
             "blog_cross_model",
         ),
@@ -1354,8 +1705,25 @@ def analysis_blog_heatmaps(config: Experiment11bConfig, force: bool = False) -> 
         if missing:
             continue
 
+        # For cross_model each target excludes itself, so derive per-panel keys
+        # from the actual matrix keys (sorted by family order).
+        per_panel_keys = None
+        if kind == "cross_model":
+            per_panel_keys = {}
+            for target in config.target_models:
+                t_keys = sorted(
+                    matrices[target].keys(),
+                    key=lambda k: _FAMILY_ORDER.index(k) if k in _FAMILY_ORDER else 99,
+                )
+                per_panel_keys[target] = (t_keys, [_SRC_SHORT[k] for k in t_keys])
+
+        ordered_targets = sorted(
+            config.target_models,
+            key=lambda t: _FAMILY_ORDER.index(t) if t in _FAMILY_ORDER else 99,
+        )
         _plot_combined_heatmaps(
-            matrices, config.target_models, keys, tick_labels, title,
+            matrices, ordered_targets, keys, tick_labels, title,
             fig_dir / stem,
+            per_panel_keys=per_panel_keys,
         )
         print(f"  Saved → {stem}.png/pdf")

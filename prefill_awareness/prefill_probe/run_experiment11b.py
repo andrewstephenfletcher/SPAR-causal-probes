@@ -24,6 +24,8 @@ Analysis IDs (in execution order):
   2  last_token_confound   — pre-normalisation last-token overlap analysis
   5  cross_dataset         — 3×3 cross-dataset generalisation heatmaps
   6  cross_model           — 3×3 cross-source generalisation heatmaps
+  11 joint_generalization  — joint cross-model × cross-dataset: train on source A + 2 datasets,
+                             test on source B + held-out dataset (3-fold CV over datasets)
   7  token_position        — accumulation curves from token-position activations
   8  summary               — headline numbers aggregated from all prior results
 
@@ -47,6 +49,7 @@ from prefill_probe.analysis_ex11b import (
     analysis_cross_dataset,
     analysis_cross_model,
     analysis_depth_curves,
+    analysis_joint_generalization,
     analysis_last_token_confound,
     analysis_per_source_depth_curves,
     analysis_position0_diagnostic,
@@ -58,7 +61,7 @@ from prefill_probe.analysis_ex11b import (
 from prefill_probe.config import Experiment11bConfig
 
 
-_EXECUTION_ORDER = [0, 3, 1, 9, 4, 2, 5, 6, 7, 8, 10]
+_EXECUTION_ORDER = [0, 3, 1, 9, 4, 2, 5, 6, 11, 7, 8, 10]
 
 _ANALYSIS_NAMES = {
     0:  "validate",
@@ -72,6 +75,7 @@ _ANALYSIS_NAMES = {
     8:  "summary",
     9:  "per_source_depth_curves",
     10: "blog_heatmaps",
+    11: "joint_generalization",
 }
 
 
@@ -182,6 +186,11 @@ def main() -> None:
         elif analysis_id == 8:
             summary = analysis_summary(config, force=args.force)
             _print_headline_summary(summary, config)
+
+        elif analysis_id == 11:
+            if depth_results is None:
+                depth_results = _load_depth_results(config)
+            analysis_joint_generalization(config, depth_results=depth_results, force=args.force)
 
         elif analysis_id == 10:
             analysis_blog_heatmaps(config, force=args.force)

@@ -638,7 +638,7 @@ class Experiment11Config:
     # Generation parameters
     temperature: float = 0.6
     top_p: float = 0.9
-    max_new_tokens: int = 512
+    max_new_tokens: int = 10000
     batch_size: int = 4
     seed: int = 42
     min_response_tokens: int = 20
