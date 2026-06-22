@@ -85,10 +85,23 @@ _DS_MARKERS = {
     "gpqa":         "^",
 }
 
+# ---------------------------------------------------------------------------
+# Plot style constants
+# ---------------------------------------------------------------------------
+_FS_TITLE       = 14   # ax.set_title (single-panel figure titles)
+_FS_SUPTITLE    = 14   # fig.suptitle
+_FS_FAMILY      = 11   # panel labels in multi-panel figures (bold)
+_FS_LABEL       = 12   # axis labels (xlabel / ylabel)
+_FS_TICK        = 10   # tick labels
+_FS_LEGEND      = 10   # legend
+_FS_CELL        = 11   # bar/value annotations
+_FS_CBAR        = 11   # colorbar label
+_FS_SMALL_ANNOT = 9    # small inline annotations ("chance", "self")
+
 
 def _save_fig(fig: plt.Figure, path_stem: Path) -> None:
-    for ext in ("png", "pdf"):
-        fig.savefig(path_stem.with_suffix(f".{ext}"), dpi=300, bbox_inches="tight")
+    fig.savefig(path_stem.with_suffix(".png"), dpi=300, bbox_inches="tight")
+    fig.savefig(path_stem.with_suffix(".pdf"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -220,11 +233,12 @@ def analysis_token_distributions(config: Experiment11bConfig, force: bool = Fals
                        color=_COLORS.get(model_key, "gray"), alpha=0.85)
 
             ax.set_xticks(x)
-            ax.set_xticklabels([repr(t) for t in top_tokens], fontsize=9, rotation=30, ha="right")
-            ax.set_xlabel("Token", fontsize=12)
-            ax.set_ylabel("% of responses", fontsize=12)
-            ax.set_title(f"{kind.capitalize()} token distribution — {ds}", fontsize=14)
-            ax.legend(fontsize=8, ncol=3)
+            ax.set_xticklabels([repr(t) for t in top_tokens], fontsize=_FS_TICK, rotation=30, ha="right")
+            ax.set_xlabel("Token", fontsize=_FS_LABEL)
+            ax.set_ylabel("% of responses", fontsize=_FS_LABEL)
+            ax.set_title(f"{kind.capitalize()} token distribution — {ds}", fontsize=_FS_TITLE, fontweight="bold")
+            ax.legend(fontsize=_FS_LEGEND, ncol=3, framealpha=0.9)
+            ax.tick_params(axis="x", length=0)
             ax.grid(axis="y", alpha=0.3)
             _save_fig(fig, fig_dir / f"{kind}_token_{ds}")
 
@@ -330,10 +344,11 @@ def analysis_depth_curves(config: Experiment11bConfig, force: bool = False) -> d
         ax.axhline(0.5, linestyle=":", color="gray", linewidth=1)
         ax.set_xlim(0, 1)
         ax.set_ylim(0.35, 1.05)
-        ax.set_xlabel("Relative layer depth", fontsize=12)
-        ax.set_ylabel("AUROC (test)", fontsize=12)
-        ax.set_title(f"Depth curves — {_DISPLAY.get(target, target)}", fontsize=14)
-        ax.legend(fontsize=8, ncol=2)
+        ax.set_xlabel("Relative layer depth", fontsize=_FS_LABEL)
+        ax.set_ylabel("AUROC (test)", fontsize=_FS_LABEL)
+        ax.set_title(f"Depth curves — {_DISPLAY.get(target, target)}", fontsize=_FS_TITLE, fontweight="bold")
+        ax.legend(fontsize=_FS_LEGEND, ncol=2, framealpha=0.9)
+        ax.tick_params(axis="x", length=0)
         ax.grid(axis="y", alpha=0.3)
         _save_fig(fig, fig_dir / f"depth_curves_{target}")
 
@@ -530,11 +545,12 @@ def analysis_last_token_confound(
                    color=_COLORS.get(model_key, "gray"), alpha=0.85)
 
         ax.set_xticks(x)
-        ax.set_xticklabels([repr(t) for t in top_tokens], fontsize=9, rotation=30, ha="right")
-        ax.set_xlabel("Last token (pre-normalisation)", fontsize=12)
-        ax.set_ylabel("% of responses", fontsize=12)
-        ax.set_title(f"Last-token distribution (pre-normalisation) — {ds}", fontsize=14)
-        ax.legend(fontsize=8, ncol=3)
+        ax.set_xticklabels([repr(t) for t in top_tokens], fontsize=_FS_TICK, rotation=30, ha="right")
+        ax.set_xlabel("Last token (pre-normalisation)", fontsize=_FS_LABEL)
+        ax.set_ylabel("% of responses", fontsize=_FS_LABEL)
+        ax.set_title(f"Last-token distribution (pre-normalisation) — {ds}", fontsize=_FS_TITLE, fontweight="bold")
+        ax.legend(fontsize=_FS_LEGEND, ncol=3, framealpha=0.9)
+        ax.tick_params(axis="x", length=0)
         ax.grid(axis="y", alpha=0.3)
         _save_fig(fig, fig_dir / f"last_token_confound_{ds}")
 
@@ -894,11 +910,12 @@ def analysis_token_position(config: Experiment11bConfig, force: bool = False) ->
                 ax.plot(pct_targets, aurocs, marker="o", markersize=4,
                         label=f"Layer {layer_idx} ({100*rel_depth:.0f}% depth)")
             ax.axhline(0.5, linestyle=":", color="gray")
-            ax.set_xlabel("Response position (% of length)", fontsize=12)
-            ax.set_ylabel("AUROC (test)", fontsize=12)
+            ax.set_xlabel("Response position (% of length)", fontsize=_FS_LABEL)
+            ax.set_ylabel("AUROC (test)", fontsize=_FS_LABEL)
             ax.set_title(f"Token-position accumulation — {_DISPLAY.get(target, target)} / {ds}",
-                         fontsize=14)
-            ax.legend(fontsize=9)
+                         fontsize=_FS_TITLE, fontweight="bold")
+            ax.legend(fontsize=_FS_LEGEND, framealpha=0.9)
+            ax.tick_params(axis="x", length=0)
             ax.set_xlim(0, 105)
             ax.set_ylim(0.35, 1.05)
             ax.grid(alpha=0.3)
@@ -1186,16 +1203,17 @@ def analysis_per_source_depth_curves(
             ax.axhline(0.5, linestyle=":", color="lightgray", linewidth=1)
             ax.set_xlim(0, 1)
             ax.set_ylim(0.35, 1.05)
-            ax.set_xlabel("Relative layer depth", fontsize=11)
+            ax.set_xlabel("Relative layer depth", fontsize=_FS_LABEL)
             if ax is axes[0]:
-                ax.set_ylabel("AUROC (test)", fontsize=11)
-            ax.set_title(ds, fontsize=12)
-            ax.legend(legend_handles, legend_labels, fontsize=8, loc="lower right")
+                ax.set_ylabel("AUROC (test)", fontsize=_FS_LABEL)
+            ax.set_title(ds, fontsize=_FS_FAMILY, fontweight="bold")
+            ax.legend(legend_handles, legend_labels, fontsize=_FS_LEGEND, loc="lower right", framealpha=0.9)
+            ax.tick_params(axis="x", length=0)
             ax.grid(axis="y", alpha=0.3)
 
         fig.suptitle(
             f"Per-source depth curves — {_DISPLAY.get(target, target)}",
-            fontsize=14, y=1.02,
+            fontsize=_FS_SUPTITLE, fontweight="bold", y=1.02,
         )
         fig.tight_layout()
         _save_fig(fig, fig_dir / f"per_source_depth_curves_{target}")
@@ -1249,145 +1267,149 @@ def analysis_joint_generalization(
     for target in config.target_models:
         out_path = out_dir / f"{target}.json"
         if not force and _json_exists(out_path):
-            print(f"[joint_generalization] {target}: already complete.")
-            continue
+            print(f"[joint_generalization] {target}: loading cached results.")
+            with open(out_path) as f:
+                result = json.load(f)
+            source_keys  = result["source_keys"]
+            fold_results = result["fold_results"]
+            mean_matrix  = result["mean_matrix"]
+        else:
+            cond_to_source = {
+                c: _all_cond_to_source[c]
+                for c in config.cross_conditions_for(target)
+                if c in _all_cond_to_source
+            }
+            source_keys = sorted(
+                cond_to_source.values(),
+                key=lambda k: _FAMILY_ORDER.index(k) if k in _FAMILY_ORDER else 99,
+            )
+            source_to_cond = {v: k for k, v in cond_to_source.items()}
 
-        cond_to_source = {
-            c: _all_cond_to_source[c]
-            for c in config.cross_conditions_for(target)
-            if c in _all_cond_to_source
-        }
-        source_keys = sorted(
-            cond_to_source.values(),
-            key=lambda k: _FAMILY_ORDER.index(k) if k in _FAMILY_ORDER else 99,
-        )
-        source_to_cond = {v: k for k, v in cond_to_source.items()}
+            opt_layer = _optimal_layer(target, depth_results or {}, config)
+            print(f"  {target}: layer {opt_layer}, {len(source_keys)} cross-sources")
 
-        opt_layer = _optimal_layer(target, depth_results or {}, config)
-        print(f"  {target}: layer {opt_layer}, {len(source_keys)} cross-sources")
-
-        # Pre-load all activations: self[ds] and cross[src][ds]
-        self_acts: dict[str, list[dict]] = {
-            ds: load_activations_ex11(target, "self", ds, config)
-            for ds in datasets
-        }
-        cross_acts: dict[str, dict[str, list[dict]]] = {
-            sk: {
-                ds: load_activations_ex11(target, source_to_cond[sk], ds, config)
+            # Pre-load all activations: self[ds] and cross[src][ds]
+            self_acts: dict[str, list[dict]] = {
+                ds: load_activations_ex11(target, "self", ds, config)
                 for ds in datasets
             }
-            for sk in source_keys
-        }
-        split_maps: dict[str, dict[int, str]] = {
-            ds: get_split_map(target, ds, config) for ds in datasets
-        }
-
-        fold_results: dict[str, dict[str, dict[str, float]]] = {}
-
-        for held_out_ds in datasets:
-            train_dsets = [ds for ds in datasets if ds != held_out_ds]
-            print(f"  {target} | held-out: {held_out_ds} | train: {train_dsets}")
-
-            fold_matrix: dict[str, dict[str, float]] = {sk: {} for sk in source_keys}
-
-            for train_src in source_keys:
-                # Merge 2 training datasets (offset prompt_ids to avoid collision)
-                def _merge(lists: list[list[dict]]) -> list[dict]:
-                    out = []
-                    for i, lst in enumerate(lists):
-                        for r in lst:
-                            out.append({**r, "prompt_id": r["prompt_id"] + i * 10000})
-                    return out
-
-                self_train   = _merge([self_acts[ds]            for ds in train_dsets])
-                cross_train  = _merge([cross_acts[train_src][ds] for ds in train_dsets])
-                split_merged = {
-                    pid + i * 10000: sp
-                    for i, ds in enumerate(train_dsets)
-                    for pid, sp in split_maps[ds].items()
+            cross_acts: dict[str, dict[str, list[dict]]] = {
+                sk: {
+                    ds: load_activations_ex11(target, source_to_cond[sk], ds, config)
+                    for ds in datasets
                 }
+                for sk in source_keys
+            }
+            split_maps: dict[str, dict[int, str]] = {
+                ds: get_split_map(target, ds, config) for ds in datasets
+            }
 
-                train_ds_splits = build_dataset_per_source(
-                    self_train, cross_train, split_merged, opt_layer
-                )
-                X_train, y_train = train_ds_splits["train"]["X"], train_ds_splits["train"]["y"]
-                X_val,   y_val   = train_ds_splits["val"]["X"],   train_ds_splits["val"]["y"]
+            fold_results: dict[str, dict[str, dict[str, float]]] = {}
 
-                if len(X_train) < 4 or len(X_val) < 2 or len(np.unique(y_train)) < 2:
-                    for test_src in source_keys:
-                        fold_matrix[train_src][test_src] = float("nan")
-                    continue
+            for held_out_ds in datasets:
+                train_dsets = [ds for ds in datasets if ds != held_out_ds]
+                print(f"  {target} | held-out: {held_out_ds} | train: {train_dsets}")
 
-                probe, mean, std, _, _ = train_probe(
-                    X_train, y_train, X_val, y_val, config.probe_regularisation_grid
-                )
+                fold_matrix: dict[str, dict[str, float]] = {sk: {} for sk in source_keys}
 
-                for test_src in source_keys:
-                    # Test on ALL records from held-out dataset (ignore split assignment)
-                    self_test  = self_acts[held_out_ds]
-                    cross_test = cross_acts[test_src][held_out_ds]
-                    common_pids = get_common_prompt_ids([self_test, cross_test])
-                    self_by_pid  = {r["prompt_id"]: r for r in self_test}
-                    cross_by_pid = {r["prompt_id"]: r for r in cross_test}
+                for train_src in source_keys:
+                    # Merge 2 training datasets (offset prompt_ids to avoid collision)
+                    def _merge(lists: list[list[dict]]) -> list[dict]:
+                        out = []
+                        for i, lst in enumerate(lists):
+                            for r in lst:
+                                out.append({**r, "prompt_id": r["prompt_id"] + i * 10000})
+                        return out
 
-                    X_test_list, y_test_list = [], []
-                    for pid in common_pids:
-                        X_test_list.append(
-                            self_by_pid[pid]["layer_activations"][opt_layer].astype(np.float32)
-                        )
-                        y_test_list.append(0)
-                        X_test_list.append(
-                            cross_by_pid[pid]["layer_activations"][opt_layer].astype(np.float32)
-                        )
-                        y_test_list.append(1)
+                    self_train   = _merge([self_acts[ds]            for ds in train_dsets])
+                    cross_train  = _merge([cross_acts[train_src][ds] for ds in train_dsets])
+                    split_merged = {
+                        pid + i * 10000: sp
+                        for i, ds in enumerate(train_dsets)
+                        for pid, sp in split_maps[ds].items()
+                    }
 
-                    if len(X_test_list) < 2:
-                        fold_matrix[train_src][test_src] = float("nan")
+                    train_ds_splits = build_dataset_per_source(
+                        self_train, cross_train, split_merged, opt_layer
+                    )
+                    X_train, y_train = train_ds_splits["train"]["X"], train_ds_splits["train"]["y"]
+                    X_val,   y_val   = train_ds_splits["val"]["X"],   train_ds_splits["val"]["y"]
+
+                    if len(X_train) < 4 or len(X_val) < 2 or len(np.unique(y_train)) < 2:
+                        for test_src in source_keys:
+                            fold_matrix[train_src][test_src] = float("nan")
                         continue
 
-                    X_test = np.stack(X_test_list)
-                    y_test = np.array(y_test_list, dtype=int)
-
-                    if len(np.unique(y_test)) < 2:
-                        fold_matrix[train_src][test_src] = float("nan")
-                        continue
-
-                    _, auroc, _ = evaluate_probe(probe, mean, std, X_test, y_test)
-                    fold_matrix[train_src][test_src] = float(auroc)
-                    print(
-                        f"    heldout={held_out_ds} train={train_src} test={test_src}: "
-                        f"AUROC={auroc:.4f}"
+                    probe, mean, std, _, _ = train_probe(
+                        X_train, y_train, X_val, y_val, config.probe_regularisation_grid
                     )
 
-            fold_results[held_out_ds] = fold_matrix
+                    for test_src in source_keys:
+                        # Test on ALL records from held-out dataset (ignore split assignment)
+                        self_test  = self_acts[held_out_ds]
+                        cross_test = cross_acts[test_src][held_out_ds]
+                        common_pids = get_common_prompt_ids([self_test, cross_test])
+                        self_by_pid  = {r["prompt_id"]: r for r in self_test}
+                        cross_by_pid = {r["prompt_id"]: r for r in cross_test}
 
-        # Aggregate mean ± std over the 3 folds
-        mean_matrix: dict[str, dict[str, float]] = {sk: {} for sk in source_keys}
-        std_matrix:  dict[str, dict[str, float]] = {sk: {} for sk in source_keys}
-        for train_src in source_keys:
-            for test_src in source_keys:
-                vals = [
-                    fold_results[ds][train_src].get(test_src, float("nan"))
-                    for ds in datasets
-                ]
-                valid = [v for v in vals if not np.isnan(v)]
-                mean_matrix[train_src][test_src] = float(np.mean(valid)) if valid else float("nan")
-                std_matrix[train_src][test_src]  = (
-                    float(np.std(valid)) if len(valid) > 1 else float("nan")
-                )
+                        X_test_list, y_test_list = [], []
+                        for pid in common_pids:
+                            X_test_list.append(
+                                self_by_pid[pid]["layer_activations"][opt_layer].astype(np.float32)
+                            )
+                            y_test_list.append(0)
+                            X_test_list.append(
+                                cross_by_pid[pid]["layer_activations"][opt_layer].astype(np.float32)
+                            )
+                            y_test_list.append(1)
 
-        result = {
-            "target":            target,
-            "opt_layer":         opt_layer,
-            "source_keys":       source_keys,
-            "datasets":          datasets,
-            "fold_results":      fold_results,
-            "mean_matrix":       mean_matrix,
-            "std_matrix":        std_matrix,
-            "mean_off_diagonal": _mean_off_diagonal(mean_matrix, source_keys),
-        }
-        with open(out_path, "w") as f:
-            json.dump(result, f, indent=2)
+                        if len(X_test_list) < 2:
+                            fold_matrix[train_src][test_src] = float("nan")
+                            continue
+
+                        X_test = np.stack(X_test_list)
+                        y_test = np.array(y_test_list, dtype=int)
+
+                        if len(np.unique(y_test)) < 2:
+                            fold_matrix[train_src][test_src] = float("nan")
+                            continue
+
+                        _, auroc, _ = evaluate_probe(probe, mean, std, X_test, y_test)
+                        fold_matrix[train_src][test_src] = float(auroc)
+                        print(
+                            f"    heldout={held_out_ds} train={train_src} test={test_src}: "
+                            f"AUROC={auroc:.4f}"
+                        )
+
+                fold_results[held_out_ds] = fold_matrix
+
+            # Aggregate mean ± std over the 3 folds
+            mean_matrix: dict[str, dict[str, float]] = {sk: {} for sk in source_keys}
+            std_matrix:  dict[str, dict[str, float]] = {sk: {} for sk in source_keys}
+            for train_src in source_keys:
+                for test_src in source_keys:
+                    vals = [
+                        fold_results[ds][train_src].get(test_src, float("nan"))
+                        for ds in datasets
+                    ]
+                    valid = [v for v in vals if not np.isnan(v)]
+                    mean_matrix[train_src][test_src] = float(np.mean(valid)) if valid else float("nan")
+                    std_matrix[train_src][test_src]  = (
+                        float(np.std(valid)) if len(valid) > 1 else float("nan")
+                    )
+
+            result = {
+                "target":            target,
+                "opt_layer":         opt_layer,
+                "source_keys":       source_keys,
+                "datasets":          datasets,
+                "fold_results":      fold_results,
+                "mean_matrix":       mean_matrix,
+                "std_matrix":        std_matrix,
+                "mean_off_diagonal": _mean_off_diagonal(mean_matrix, source_keys),
+            }
+            with open(out_path, "w") as f:
+                json.dump(result, f, indent=2)
 
         src_labels = [_DISPLAY.get(sk, sk) for sk in source_keys]
 
@@ -1416,28 +1438,34 @@ def analysis_joint_generalization(
                     v = matrix.get(k1, {}).get(k2)
                     if v is not None and not np.isnan(v):
                         data[i, j] = v
+            cmap = plt.get_cmap("RdYlGn")
             last_im = ax.imshow(data, vmin=0.5, vmax=1.0, cmap="RdYlGn", aspect="auto")
             for i in range(n):
                 for j in range(n):
-                    if not np.isnan(data[i, j]):
-                        ax.text(j, i, f"{data[i, j]:.2f}", ha="center", va="center",
-                                fontsize=9, color="black")
+                    val = data[i, j]
+                    if not np.isnan(val):
+                        norm_val = (val - 0.5) / 0.5
+                        r, g, b, _ = cmap(norm_val)
+                        luminance = 0.299 * r + 0.587 * g + 0.114 * b
+                        text_color = "white" if luminance < 0.45 else "black"
+                        ax.text(j, i, f"{val:.2f}", ha="center", va="center",
+                                fontsize=_FS_CELL, fontweight="bold", color=text_color)
             ax.set_xticks(range(n))
-            ax.set_xticklabels(src_labels, rotation=30, ha="right", fontsize=8)
+            ax.set_xticklabels(src_labels, rotation=30, ha="right", fontsize=_FS_TICK)
             ax.set_yticks(range(n))
-            ax.set_yticklabels(src_labels, fontsize=8)
-            ax.set_title(f"Held-out: {_DS_SHORT.get(held_out_ds, held_out_ds)}", fontsize=11)
-            ax.set_xlabel("Test source", fontsize=10)
+            ax.set_yticklabels(src_labels, fontsize=_FS_TICK)
+            ax.set_title(f"Held-out: {_DS_SHORT.get(held_out_ds, held_out_ds)}", fontsize=_FS_FAMILY, fontweight="bold")
+            ax.set_xlabel("Test source", fontsize=_FS_LABEL)
             if ax is axes_list[0]:
-                ax.set_ylabel("Train source", fontsize=10)
+                ax.set_ylabel("Train source", fontsize=_FS_LABEL)
 
         if last_im is not None:
             cbar = fig.colorbar(last_im, ax=axes_list, shrink=0.75, pad=0.03)
-            cbar.set_label("AUROC", fontsize=10)
+            cbar.set_label("AUROC", fontsize=_FS_CBAR)
 
         fig.suptitle(
             f"Joint generalization (per fold) — {_DISPLAY.get(target, target)}",
-            fontsize=14,
+            fontsize=_FS_SUPTITLE, fontweight="bold",
         )
         _save_fig(fig, fig_dir / f"joint_gen_folds_{target}")
         print(
@@ -1487,13 +1515,13 @@ def _plot_heatmap(
             val = data[i, j]
             if not np.isnan(val):
                 ax.text(j, i, f"{val:.3f}", ha="center", va="center",
-                        fontsize=9, color="black")
+                        fontsize=_FS_CELL, color="black")
 
-    ax.set_xticks(range(n)); ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=9)
-    ax.set_yticks(range(n)); ax.set_yticklabels(labels, fontsize=9)
-    ax.set_xlabel("Test", fontsize=12)
-    ax.set_ylabel("Train", fontsize=12)
-    ax.set_title(title, fontsize=13)
+    ax.set_xticks(range(n)); ax.set_xticklabels(labels, rotation=30, ha="right", fontsize=_FS_TICK)
+    ax.set_yticks(range(n)); ax.set_yticklabels(labels, fontsize=_FS_TICK)
+    ax.set_xlabel("Test", fontsize=_FS_LABEL)
+    ax.set_ylabel("Train", fontsize=_FS_LABEL)
+    ax.set_title(title, fontsize=_FS_TITLE, fontweight="bold")
     _save_fig(fig, path_stem)
 
 
@@ -1572,23 +1600,23 @@ def _plot_combined_heatmaps(
                     luminance = 0.299 * r + 0.587 * g + 0.114 * b
                     text_color = "white" if luminance < 0.45 else "black"
                     ax.text(j, i, f"{val:.2f}", ha="center", va="center",
-                            fontsize=11, fontweight="bold", color=text_color)
+                            fontsize=_FS_CELL, fontweight="bold", color=text_color)
 
         ax.set_xticks(range(n))
-        ax.set_xticklabels(panel_labels, fontsize=10)
+        ax.set_xticklabels(panel_labels, fontsize=_FS_TICK)
         ax.set_yticks(range(n))
-        ax.set_yticklabels(panel_labels, fontsize=10)
-        ax.set_title(_DISPLAY.get(target, target), fontsize=13, fontweight="bold", pad=8)
-        ax.set_xlabel("Test", fontsize=11)
+        ax.set_yticklabels(panel_labels, fontsize=_FS_TICK)
+        ax.set_title(_DISPLAY.get(target, target), fontsize=_FS_FAMILY, fontweight="bold", pad=8)
+        ax.set_xlabel("Test", fontsize=_FS_LABEL)
         if ax is axes_list[0]:
-            ax.set_ylabel("Train", fontsize=11)
+            ax.set_ylabel("Train", fontsize=_FS_LABEL)
 
     if last_im is not None:
         cbar = fig.colorbar(last_im, ax=axes_list, shrink=0.75, pad=0.03)
-        cbar.set_label("AUROC", fontsize=11)
-        cbar.ax.tick_params(labelsize=10)
+        cbar.set_label("AUROC", fontsize=_FS_CBAR)
+        cbar.ax.tick_params(labelsize=_FS_TICK)
 
-    fig.suptitle(title, fontsize=15, fontweight="bold")
+    fig.suptitle(title, fontsize=_FS_SUPTITLE, fontweight="bold")
     _save_fig(fig, path_stem)
 
 
@@ -1644,15 +1672,16 @@ def analysis_blog_depth_curves(config: Experiment11bConfig, force: bool = False)
         ax.axhline(0.5, linestyle=":", color="lightgray", linewidth=1)
         ax.set_xlim(0, 1)
         ax.set_ylim(0.35, 1.05)
-        ax.set_xlabel("Relative layer depth", fontsize=11)
-        ax.set_title(_DS_SHORT.get(ds, ds), fontsize=12, fontweight="bold")
+        ax.set_xlabel("Relative layer depth", fontsize=_FS_LABEL)
+        ax.set_title(_DS_SHORT.get(ds, ds), fontsize=_FS_FAMILY, fontweight="bold")
+        ax.tick_params(axis="x", length=0)
         ax.grid(axis="y", alpha=0.3)
         if ax is axes_list[0]:
-            ax.set_ylabel("AUROC (test)", fontsize=11)
-            ax.legend(fontsize=9, loc="lower right")
+            ax.set_ylabel("AUROC (test)", fontsize=_FS_LABEL)
+            ax.legend(fontsize=_FS_LEGEND, loc="lower right", framealpha=0.9)
 
     fig.suptitle("Depth curves — LR probe AUROC by dataset",
-                 fontsize=14, fontweight="bold")
+                 fontsize=_FS_SUPTITLE, fontweight="bold")
     _save_fig(fig, fig_dir / "blog_depth_curves")
     print("  Saved → blog_depth_curves.png/pdf")
 
